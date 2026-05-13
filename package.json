@@ -1,0 +1,32 @@
+{
+  "name": "sierra-uber-eats-middleware",
+  "version": "1.0.0",
+  "description": "Middleware para integración de Uber Eats con Sistemas Sierra POS",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "uber-eats",
+    "pos",
+    "integration",
+    "middleware"
+  ],
+  "author": "Ing. Roberto E Gaxiola V.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
