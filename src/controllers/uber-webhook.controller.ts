@@ -105,7 +105,8 @@ class UberWebhookController {
       typeof body.event_id === 'string' &&
       typeof body.event_type === 'string' &&
       body.data &&
-      typeof body.data.order_id === 'string'
+      (typeof body.data.order_id === 'string' || typeof body.data.resource_id === 'string') &&
+      typeof body.data.store_id === 'string'
     );
   }
 }

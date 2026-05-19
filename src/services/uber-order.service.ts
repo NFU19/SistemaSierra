@@ -6,10 +6,11 @@ import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
 import { uberAuthService } from './uber-auth.service';
 import { UberOrderDetails } from '../interfaces/uber.interface';
+import { config } from '../config/config';
 
 class UberOrderService {
   private axiosInstance: AxiosInstance;
-  private baseUrl = 'https://api.uber.com';
+  private baseUrl = config.uber.apiBaseUrl;
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -55,6 +56,71 @@ class UberOrderService {
       }
 
       throw new Error(`No se pudieron obtener los detalles de la orden ${orderId}`);
+    }
+  }
+
+  /**
+   * Acepta una orden en Uber Eats
+   * @param orderId ID de la orden en Uber
+   */
+  async acceptOrder(orderId: string): Promise<void> {
+    try {
+      logger.info(`Aceptando orden en Uber: ${orderId}`);
+
+      const accessToken = await uberAuthService.getAccessToken();
+
+      await this.axiosInstance.post(
+        `/v1/delivery/orders/${orderId}/accept_pos_order`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+          },
+        }
+      );
+    } catch (error: any) {
+      logger.error(`Error al aceptar orden ${orderId}`, error);
+
+      if (error.response?.status === 401) {
+        logger.warn('Token expirado, invalidando caché');
+        uberAuthService.invalidateToken();
+      }
+
+      throw new Error(`No se pudo aceptar la orden ${orderId}`);
+    }
+  }
+
+  /**
+   * Rechaza una orden en Uber Eats
+   * @param orderId ID de la orden en Uber
+   * @param reason Razón de rechazo (opcional)
+   */
+  async denyOrder(orderId: string, reason?: string): Promise<void> {
+    try {
+      logger.info(`Rechazando orden en Uber: ${orderId}`);
+
+      const accessToken = await uberAuthService.getAccessToken();
+
+      await this.axiosInstance.post(
+        `/v1/delivery/orders/${orderId}/deny_pos_order`,
+        reason ? { reason } : {},
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+          },
+        }
+      );
+    } catch (error: any) {
+      logger.error(`Error al rechazar orden ${orderId}`, error);
+
+      if (error.response?.status === 401) {
+        logger.warn('Token expirado, invalidando caché');
+        uberAuthService.invalidateToken();
+      }
+
+      throw new Error(`No se pudo rechazar la orden ${orderId}`);
     }
   }
 

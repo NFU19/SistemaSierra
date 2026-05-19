@@ -9,6 +9,7 @@ import { uberOrderService } from './uber-order.service';
 import { orderMapperService } from './order-mapper.service';
 import { sierraIntegrationService } from './sierra-integration.service';
 import { eventService } from './event.service';
+import { config } from '../config/config';
 
 interface ProcessingResult {
   success: boolean;
@@ -36,14 +37,50 @@ class WebhookProcessingService {
    */
   private async processWebhookInternal(webhook: UberWebhookPayload): Promise<ProcessingResult> {
     const startTime = Date.now();
-    const uberOrderId = webhook.data.order_id;
+    const uberOrderId = webhook.data.order_id || webhook.data.resource_id || '';
+    const webhookStoreId = webhook.data.store_id;
 
     try {
       logger.info(`Iniciando procesamiento de orden Uber: ${uberOrderId}`);
 
+      if (!uberOrderId) {
+        return {
+          success: false,
+          message: 'order_id no presente en webhook',
+        };
+      }
+
+      if (config.uber.storeId && webhookStoreId !== config.uber.storeId) {
+        logger.warn('Webhook ignorado por store_id no coincidente', {
+          uberOrderId,
+          webhookStoreId,
+          expectedStoreId: config.uber.storeId,
+        });
+
+        return {
+          success: false,
+          message: 'store_id no coincide con la tienda configurada',
+          uberOrderId,
+        };
+      }
+
       // Paso 1: Obtener detalles completos de la orden
       logger.debug('Paso 1: Obteniendo detalles de orden de Uber...');
       const uberOrderDetails = await uberOrderService.getOrderDetails(uberOrderId);
+
+      if (config.uber.storeId && uberOrderDetails.store_id !== config.uber.storeId) {
+        logger.warn('Orden ignorada por store_id no coincidente en detalles', {
+          uberOrderId,
+          detailsStoreId: uberOrderDetails.store_id,
+          expectedStoreId: config.uber.storeId,
+        });
+
+        return {
+          success: false,
+          message: 'store_id no coincide con la tienda configurada',
+          uberOrderId,
+        };
+      }
 
       // Paso 2: Mapear a formato Sierra
       logger.debug('Paso 2: Mapeando orden a formato Sierra...');
@@ -52,6 +89,10 @@ class WebhookProcessingService {
       // Paso 3: Crear orden en Sierra
       logger.debug('Paso 3: Creando orden en Sierra...');
       const sierraResponse = await sierraIntegrationService.createOrder(sierraOrderTicket);
+
+      // Paso 4: Aceptar orden en Uber (si aplica)
+      logger.debug('Paso 4: Aceptando orden en Uber...');
+      await uberOrderService.acceptOrder(uberOrderId);
 
       const processingTime = Date.now() - startTime;
 

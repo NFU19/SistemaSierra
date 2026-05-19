@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { uberWebhookController } from '../controllers/uber-webhook.controller';
 import { posController } from '../controllers/pos.controller';
+import { uberMenuController } from '../controllers/uber-menu.controller';
 
 export const webhookRoutes = Router();
 
@@ -22,6 +23,14 @@ webhookRoutes.post('/webhook/uber/orders', (req, res) =>
  */
 webhookRoutes.get('/webhook/uber/health', (req, res) =>
   uberWebhookController.healthCheck(req, res)
+);
+
+/**
+ * POST /api/uber/menus/sync
+ * Sincroniza menu desde Sierra a Uber Eats
+ */
+webhookRoutes.post('/api/uber/menus/sync', (req, res) =>
+  uberMenuController.syncMenu(req, res)
 );
 
 /**

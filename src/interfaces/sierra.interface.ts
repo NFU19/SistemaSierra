@@ -37,3 +37,29 @@ export interface SierraOrderResponse {
   timestamp: string;
   status: string;
 }
+
+export interface SierraPluItem {
+  id?: string | null;
+  nombre_largo?: string | null;
+  nombre_corto?: string | null;
+  precio1?: number | string | null;
+  precio2?: number | string | null;
+  precio3?: number | string | null;
+  precio4?: number | string | null;
+  precio5?: number | string | null;
+  precio6?: number | string | null;
+  precio7?: number | string | null;
+  precio8?: number | string | null;
+  precio9?: number | string | null;
+  tabla_iva?: string | null;
+  mod?: string | null;
+  inv?: number | string | null;
+  category?: boolean;
+}
+
+export interface SierraPluStockData {
+  plu?: string | null;
+  usesOnlineInventory?: number | string | null;
+  onlineInventory?: number | string | null;
+  isSoldOut?: number | string | null;
+}

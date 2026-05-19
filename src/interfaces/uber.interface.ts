@@ -10,7 +10,9 @@ export interface UberWebhookPayload {
 }
 
 export interface UberOrderEvent {
-  order_id: string;
+  order_id?: string;
+  resource_id?: string;
+  resource_href?: string;
   store_id: string;
   timestamp: number;
   platform: 'eats' | string;

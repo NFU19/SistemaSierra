@@ -16,6 +16,12 @@ export const config = {
     clientId: process.env.UBER_CLIENT_ID || '',
     clientSecret: process.env.UBER_CLIENT_SECRET || '',
     authUrl: process.env.UBER_AUTH_URL || 'https://auth.uber.com/oauth/v2/token',
+    apiBaseUrl: process.env.UBER_API_BASE_URL || 'https://api.uber.com',
+    oauthScope: process.env.UBER_OAUTH_SCOPE || 'eats.order.read',
+    menuPath:
+      process.env.UBER_MENU_PATH || '/v2/eats/stores/{storeId}/menus',
+    storeId: process.env.UBER_STORE_ID || '',
+    storeName: process.env.UBER_STORE_NAME || '',
   },
 
   // Sistemas Sierra
@@ -40,6 +46,8 @@ export function validateConfig(): void {
   const requiredVars = [
     'UBER_CLIENT_ID',
     'UBER_CLIENT_SECRET',
+    'UBER_STORE_ID',
+    'UBER_STORE_NAME',
     'SIERRA_API_URL',
     'SIERRA_API_KEY',
   ];
