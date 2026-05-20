@@ -54,7 +54,7 @@ export interface SierraPluItem {
   tabla_iva?: string | null;
   mod?: string | null;
   inv?: number | string | null;
-  category?: boolean;
+  category?: string | number | boolean | null;
 }
 
 export interface SierraPluStockData {

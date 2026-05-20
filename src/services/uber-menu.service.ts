@@ -27,7 +27,60 @@ interface SyncMenuResult {
 interface SierraCategoryMapping {
   name: string;
   items: SierraPluItem[];
+  modifiers: SierraPluItem[];
 }
+
+interface CategoryBuildResult {
+  sections: Map<string, SierraCategoryMapping>;
+  uncategorizedItems: SierraPluItem[];
+  uncategorizedModifiers: SierraPluItem[];
+}
+
+interface GeneralCategoryBucket {
+  name: string;
+  items: any[];
+}
+
+const GENERAL_CATEGORY_DEFINITIONS: Record<string, string[]> = {
+  BEBIDAS: [
+    'REFRESCOS',
+    'CAFES CALIENTES',
+    'AGUAS MEDIANAS',
+    'AGUAS GRANDES',
+    'CERVEZAS',
+    'CHABELAS',
+    'MICHELADAS',
+  ],
+  COMIDA: [
+    'TACOS MAIZ',
+    'TACOS HARINA',
+    'TOSTADAS',
+    'QUESADILLAS MAIZ',
+    'QUESADILLAS HARINA',
+    'CUATAS GRINGAS',
+    'PAPAS CLASICA',
+    'PAPA ESPECIAL',
+    'PAPAS SUPER',
+    'PAPAS SAZONADAS',
+    'VAMPIROS',
+    'QUESOS',
+    'FRIJOLES CHARROS',
+    'FRIJOLES OLLA',
+  ],
+  ENTRADAS: ['CHILES', 'JUGOS', 'PENCA NOPAL', 'BARRA DE SALSAS'],
+};
+
+const MODIFIER_CATEGORY_TARGETS: Record<string, string[]> = {
+  'MODIFICADORES TACOS': ['TACOS MAIZ', 'TACOS HARINA'],
+  'MODIFICADOR QUESADILLA': ['QUESADILLAS MAIZ', 'QUESADILLAS HARINAS'],
+  'MODIFICADOR PARRILLAS': ['PARRILLADAS'],
+  LECHES: ['CAFES CALIENTES'],
+  JARABES: ['POSTRES'],
+};
+
+const IGNORED_MODIFIER_CATEGORIES = new Set(['MODIFICADORES']);
+
+const PASSTHROUGH_CATEGORIES = new Set(['PARRILLADAS', 'SOPAS', 'POSTRES']);
 
 class UberMenuService {
   private axiosInstance: AxiosInstance;
@@ -40,15 +93,13 @@ class UberMenuService {
   }
 
   async syncMenu(dryRun = false): Promise<SyncMenuResult> {
-    const [plusCatalog, stock, categories] = await Promise.all([
+    const [plusCatalog, stock] = await Promise.all([
       sierraCatalogService.getPlusCatalog(),
       sierraCatalogService.getStock(),
-      sierraCatalogService.getCategories(),
     ]);
 
-    const categoryMappings = await this.buildCategoryMappings(categories);
     const stockMap = this.buildStockMap(stock);
-    const menuResult = this.buildMenuPayload(plusCatalog, stockMap, categoryMappings);
+    const menuResult = this.buildMenuPayload(plusCatalog, stockMap);
 
     if (dryRun) {
       return menuResult;
@@ -96,65 +147,118 @@ class UberMenuService {
 
   private buildMenuPayload(
     plusCatalog: SierraPluItem[],
-    stockMap: Map<string, SierraPluStockData>,
-    categoryMappings: SierraCategoryMapping[]
+    stockMap: Map<string, SierraPluStockData>
   ): SyncMenuResult {
     const storeName = config.uber.storeName || 'Menu';
-    const menuId = `menu-${this.toSlug(storeName) || 'all-day'}`;
+    const menuId = `menu-${this.toSlug(storeName) || 'all-day'}-v2`;
 
-    const modifierItems = plusCatalog
-      .filter((item) => this.isModifier(item))
-      .filter((item) => !this.isSoldOut(item, stockMap))
+    const categoryBuild = this.buildCategoryMappingsFromCatalog(plusCatalog, stockMap);
+    const generalCategoryMap = this.buildGeneralCategoryMap();
+
+    const categories: any[] = [];
+    const mappedItems: any[] = [];
+    const mappedModifiers: any[] = [];
+    const modifierGroups: any[] = [];
+    const generalBuckets = new Map<string, GeneralCategoryBucket>();
+    const modifierItemsBySection = this.buildModifierItemsBySection(categoryBuild.sections);
+    const modifierGroupIdBySection = new Map<string, string>();
+
+    modifierItemsBySection.forEach((modifierItems, sectionKey) => {
+      if (modifierItems.length === 0) {
+        return;
+      }
+
+      const uniqueModifierItems = this.mapUniqueModifiers(modifierItems);
+      if (uniqueModifierItems.length === 0) {
+        return;
+      }
+
+      const modifierGroupId = `mods-${this.toSlug(sectionKey)}`;
+      modifierGroupIdBySection.set(sectionKey, modifierGroupId);
+      mappedModifiers.push(...uniqueModifierItems);
+      modifierGroups.push({
+        id: modifierGroupId,
+        title: {
+          translations: {
+            en_us: `Modificadores ${sectionKey}`,
+          },
+        },
+        quantity_info: {
+          quantity: {
+            max_permitted: 5,
+          },
+        },
+        modifier_options: uniqueModifierItems.map((item) => ({
+          type: 'ITEM',
+          id: item.id,
+        })),
+      });
+    });
+
+    categoryBuild.sections.forEach((section, sectionKey) => {
+      if (this.isModifierCategory(sectionKey)) {
+        return;
+      }
+
+      if (!this.isAllowedSection(sectionKey, generalCategoryMap)) {
+        return;
+      }
+
+      const generalCategoryName = this.resolveGeneralCategoryName(
+        sectionKey,
+        generalCategoryMap,
+        storeName
+      );
+      const modifierGroupId = modifierGroupIdBySection.get(sectionKey) || null;
+
+      const categoryItems = section.items
+        .map((item) =>
+          this.mapPluToItem(item, modifierGroupId ? [modifierGroupId] : undefined)
+        )
+        .filter((item) => item !== null);
+
+      if (categoryItems.length === 0) {
+        return;
+      }
+
+      mappedItems.push(...categoryItems);
+      this.addToGeneralBucket(generalBuckets, generalCategoryName, categoryItems);
+    });
+
+    const mappedUncategorizedItems = categoryBuild.uncategorizedItems
       .map((item) => this.mapPluToItem(item))
       .filter((item) => item !== null);
 
-    const modifierGroupId = modifierItems.length > 0 ? 'modifiers' : null;
+    if (mappedUncategorizedItems.length > 0 && generalCategoryMap.size === 0) {
+      mappedItems.push(...mappedUncategorizedItems);
+      this.addToGeneralBucket(generalBuckets, storeName, mappedUncategorizedItems);
+    }
 
-    const items = plusCatalog
-      .filter((item) => this.isMenuItem(item))
-      .filter((item) => !this.isSoldOut(item, stockMap))
-      .map((item) => this.mapPluToItem(item, modifierGroupId))
-      .filter((item) => item !== null);
 
-    const allItems = [...items, ...modifierItems];
-    const itemIds = new Set(items.map((item) => item.id));
-
-    const categories = this.buildCategories(categoryMappings, itemIds, storeName);
+    generalBuckets.forEach((bucket, name) => {
+      const slug = this.toSlug(name) || this.toSlug(storeName) || 'catalogo';
+      const uniqueItems = this.dedupeMappedItems(bucket.items);
+      categories.push({
+        id: `cat-${slug}`,
+        title: { translations: { en_us: name } },
+        entities: uniqueItems.map((item) => ({ type: 'ITEM', id: item.id })),
+      });
+    });
 
     if (categories.length === 0) {
-      const fallbackCategoryId = `cat-${this.toSlug(storeName) || 'catalogo'}`;
       categories.push({
-        id: fallbackCategoryId,
+        id: `cat-${this.toSlug(storeName) || 'catalogo'}`,
         title: { translations: { en_us: storeName } },
-        entities: items.map((item) => ({ type: 'ITEM', id: item.id })),
+        entities: [],
       });
     }
 
+    const allItems = this.dedupeMappedItems([...mappedItems, ...mappedModifiers]);
     const categoryIds = categories.map((category) => category.id);
 
     const payload: UberMenuPayload = {
       items: allItems as any[],
-      modifier_groups: modifierGroupId
-        ? [
-            {
-              id: modifierGroupId,
-              title: {
-                translations: {
-                  en_us: 'Modificadores',
-                },
-              },
-              quantity_info: {
-                quantity: {
-                  max_permitted: 5,
-                },
-              },
-              modifier_options: modifierItems.map((item) => ({
-                type: 'ITEM',
-                id: item.id,
-              })),
-            },
-          ]
-        : [],
+      modifier_groups: modifierGroups,
       categories,
       menus: [
         {
@@ -176,22 +280,25 @@ class UberMenuService {
     return {
       menuId,
       categoryIds,
-      itemCount: items.length,
+      itemCount: mappedItems.length,
       payload,
     };
   }
 
-  private mapPluToItem(item: SierraPluItem, modifierGroupId?: string | null): any | null {
+  private mapPluToItem(
+    item: SierraPluItem,
+    modifierGroupIds?: string[] | null
+  ): any | null {
     if (!item.id) {
       return null;
     }
 
     const priceCents = this.parsePriceToCents(item.precio1);
-    if (priceCents === null) {
+    if (priceCents === null || priceCents <= 0) {
       return null;
     }
 
-    const title = item.nombre_largo || item.nombre_corto || item.id;
+    const title = this.getDisplayName(item);
 
     const mappedItem: any = {
       id: String(item.id),
@@ -211,9 +318,9 @@ class UberMenuService {
       external_data: `plu:${item.id}`,
     };
 
-    if (modifierGroupId) {
+    if (modifierGroupIds && modifierGroupIds.length > 0) {
       mappedItem.modifier_group_ids = {
-        ids: [modifierGroupId],
+        ids: modifierGroupIds,
       };
     }
 
@@ -225,7 +332,7 @@ class UberMenuService {
       return false;
     }
 
-    if (item.category) {
+    if (item.category === true) {
       return false;
     }
 
@@ -319,26 +426,75 @@ class UberMenuService {
     }));
   }
 
-  private async buildCategoryMappings(
-    categories: string[]
-  ): Promise<SierraCategoryMapping[]> {
-    if (categories.length === 0) {
-      return [];
-    }
+  private buildCategoryMappingsFromCatalog(
+    plusCatalog: SierraPluItem[],
+    stockMap: Map<string, SierraPluStockData>
+  ): CategoryBuildResult {
+    const map = new Map<string, SierraCategoryMapping>();
+    const uncategorizedItems: SierraPluItem[] = [];
+    const uncategorizedModifiers: SierraPluItem[] = [];
+    let currentCategoryName: string | null = null;
+    let currentCategoryKey: string | null = null;
 
-    const mappings = await Promise.all(
-      categories.map(async (category) => {
-        try {
-          const items = await sierraCatalogService.getPlusByCategory(category);
-          return { name: category, items };
-        } catch (error) {
-          logger.warn('No se pudo obtener items de categoria', { category, error });
-          return { name: category, items: [] };
+    plusCatalog.forEach((item) => {
+      if (item.category === true) {
+        currentCategoryName = this.getCategoryLabel(item);
+        if (!currentCategoryName) {
+          currentCategoryKey = null;
+          return;
         }
-      })
-    );
 
-    return mappings.filter((mapping) => mapping.items.length > 0);
+        currentCategoryKey = this.normalizeCategoryName(currentCategoryName);
+
+        if (!map.has(currentCategoryKey)) {
+          map.set(currentCategoryKey, {
+            name: currentCategoryName,
+            items: [],
+            modifiers: [],
+          });
+        }
+
+        return;
+      }
+
+      const isIgnoredModifierSection =
+        currentCategoryKey && IGNORED_MODIFIER_CATEGORIES.has(currentCategoryKey);
+
+      if (isIgnoredModifierSection) {
+        return;
+      }
+
+      if (this.isSoldOut(item, stockMap)) {
+        return;
+      }
+
+      const isModifierSection =
+        currentCategoryKey && this.isModifierCategory(currentCategoryKey);
+
+      if (isModifierSection || this.isModifier(item)) {
+        if (currentCategoryKey && map.has(currentCategoryKey)) {
+          map.get(currentCategoryKey)?.modifiers.push(item);
+        } else {
+          uncategorizedModifiers.push(item);
+        }
+
+        return;
+      }
+
+      if (this.isMenuItem(item)) {
+        if (currentCategoryKey && map.has(currentCategoryKey)) {
+          map.get(currentCategoryKey)?.items.push(item);
+        } else {
+          uncategorizedItems.push(item);
+        }
+      }
+    });
+
+    return {
+      sections: map,
+      uncategorizedItems,
+      uncategorizedModifiers,
+    };
   }
 
   private buildStockMap(stockItems: SierraPluStockData[]): Map<string, SierraPluStockData> {
@@ -353,35 +509,165 @@ class UberMenuService {
     return map;
   }
 
-  private buildCategories(
-    mappings: SierraCategoryMapping[],
-    itemIds: Set<string>,
-    fallbackName: string
-  ): any[] {
-    const categories: any[] = [];
+  private getCategoryLabel(item: SierraPluItem): string | null {
+    const label = item.nombre_largo || item.nombre_corto || item.id;
+    if (!label) {
+      return null;
+    }
 
-    mappings.forEach((mapping) => {
-      const entities = mapping.items
-        .map((item) => String(item.id || ''))
-        .filter((id) => id && itemIds.has(id))
-        .map((id) => ({ type: 'ITEM', id }));
+    const name = String(label).trim();
+    return name.length > 0 ? name : null;
+  }
 
-      if (entities.length === 0) {
-        return;
-      }
+  private getDisplayName(item: SierraPluItem): string {
+    const longName = item.nombre_largo ? String(item.nombre_largo).trim() : '';
+    const shortName = item.nombre_corto ? String(item.nombre_corto).trim() : '';
 
-      categories.push({
-        id: `cat-${this.toSlug(mapping.name) || this.toSlug(fallbackName)}`,
-        title: {
-          translations: {
-            en_us: mapping.name,
-          },
-        },
-        entities,
+    if (longName && /[A-Za-z]/.test(longName)) {
+      return longName;
+    }
+
+    if (shortName) {
+      return shortName;
+    }
+
+    return String(item.id || '').trim() || 'Item';
+  }
+
+  private normalizeCategoryName(value: string): string {
+    return value.trim().replace(/\s+/g, ' ').toUpperCase();
+  }
+
+  private buildGeneralCategoryMap(): Map<string, string> {
+    const map = new Map<string, string>();
+
+    Object.entries(GENERAL_CATEGORY_DEFINITIONS).forEach(([general, sections]) => {
+      sections.forEach((section) => {
+        map.set(this.normalizeCategoryName(section), general);
       });
     });
 
-    return categories;
+    return map;
+  }
+
+  private isModifierCategory(sectionKey: string): boolean {
+    const normalized = this.normalizeCategoryName(sectionKey);
+    if (IGNORED_MODIFIER_CATEGORIES.has(normalized)) {
+      return true;
+    }
+
+    return normalized in MODIFIER_CATEGORY_TARGETS;
+  }
+
+  private buildModifierItemsBySection(
+    sections: Map<string, SierraCategoryMapping>
+  ): Map<string, SierraPluItem[]> {
+    const modifiersBySection = new Map<string, SierraPluItem[]>();
+
+    sections.forEach((section, sectionKey) => {
+      if (section.modifiers.length === 0) {
+        return;
+      }
+
+      const normalized = this.normalizeCategoryName(sectionKey);
+      if (IGNORED_MODIFIER_CATEGORIES.has(normalized)) {
+        return;
+      }
+
+      if (normalized in MODIFIER_CATEGORY_TARGETS) {
+        MODIFIER_CATEGORY_TARGETS[normalized].forEach((target) => {
+          const targetKey = this.normalizeCategoryName(target);
+          if (!sections.has(targetKey)) {
+            return;
+          }
+          const list = modifiersBySection.get(targetKey) || [];
+          list.push(...section.modifiers);
+          modifiersBySection.set(targetKey, list);
+        });
+
+        return;
+      }
+
+      if (PASSTHROUGH_CATEGORIES.has(normalized)) {
+        return;
+      }
+
+      modifiersBySection.set(sectionKey, section.modifiers);
+    });
+
+    return modifiersBySection;
+  }
+
+  private mapUniqueModifiers(items: SierraPluItem[]): any[] {
+    const seen = new Set<string>();
+    const mapped: any[] = [];
+
+    items.forEach((item) => {
+      const mappedItem = this.mapPluToItem(item);
+      if (!mappedItem || !mappedItem.id || seen.has(mappedItem.id)) {
+        return;
+      }
+
+      seen.add(mappedItem.id);
+      mapped.push(mappedItem);
+    });
+
+    return mapped;
+  }
+
+  private dedupeMappedItems(items: any[]): any[] {
+    const seen = new Set<string>();
+    const deduped: any[] = [];
+
+    items.forEach((item) => {
+      if (!item || !item.id || seen.has(item.id)) {
+        return;
+      }
+
+      seen.add(item.id);
+      deduped.push(item);
+    });
+
+    return deduped;
+  }
+
+  private addToGeneralBucket(
+    buckets: Map<string, GeneralCategoryBucket>,
+    name: string,
+    items: any[]
+  ): void {
+    const bucket = buckets.get(name) || { name, items: [] };
+    bucket.items = this.dedupeMappedItems([...bucket.items, ...items]);
+    buckets.set(name, bucket);
+  }
+
+  private isAllowedSection(
+    sectionKey: string,
+    generalCategoryMap: Map<string, string>
+  ): boolean {
+    const normalized = this.normalizeCategoryName(sectionKey);
+    if (generalCategoryMap.size === 0) {
+      return true;
+    }
+
+    if (generalCategoryMap.has(normalized)) {
+      return true;
+    }
+
+    return PASSTHROUGH_CATEGORIES.has(normalized);
+  }
+
+  private resolveGeneralCategoryName(
+    sectionKey: string,
+    generalCategoryMap: Map<string, string>,
+    fallbackName: string
+  ): string {
+    const normalized = this.normalizeCategoryName(sectionKey);
+    if (PASSTHROUGH_CATEGORIES.has(normalized)) {
+      return sectionKey;
+    }
+
+    return generalCategoryMap.get(normalized) || fallbackName;
   }
 }
 
