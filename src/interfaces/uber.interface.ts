@@ -4,9 +4,14 @@
 
 export interface UberWebhookPayload {
   event_id: string;
-  timestamp: number;
-  event_type: 'order.created' | 'order.updated' | 'order.cancelled' | string;
-  data: UberOrderEvent;
+  timestamp?: number;
+  event_time?: number;
+  event_type: string;
+  data?: UberOrderEvent;
+  resource_href?: string;
+  resource_id?: string;
+  meta?: Record<string, any>;
+  webhook_meta?: Record<string, any>;
 }
 
 export interface UberOrderEvent {

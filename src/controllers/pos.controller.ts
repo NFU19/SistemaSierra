@@ -432,8 +432,8 @@ class POSController {
             const success = orders.filter(o => o.status === 'success').length;
             const errors = orders.filter(o => o.status === 'error').length;
             const amount = orders
-                .filter(o => o.orderData && o.orderData.subTotal)
-                .reduce((sum, o) => sum + (o.orderData?.subTotal || 0), 0);
+                .filter(o => o.totals && typeof o.totals.total === 'number')
+                .reduce((sum, o) => sum + (o.totals?.total || 0), 0);
 
             document.getElementById('stat-total').textContent = total;
             document.getElementById('stat-success').textContent = success;
@@ -446,38 +446,52 @@ class POSController {
             return date.toLocaleTimeString('es-MX');
         }
 
+        function getUberStatusLabel(status) {
+            if (!status) return 'Desconocido';
+            const normalized = String(status).toLowerCase();
+
+            if (['completed', 'delivered'].includes(normalized)) return 'Completado';
+            if (['cancelled', 'canceled', 'failed', 'rejected'].includes(normalized)) return 'Cancelado';
+            if (['accepted', 'ready', 'courier_assigned', 'in_progress', 'processing'].includes(normalized)) return 'En proceso';
+            if (['created', 'placed', 'new'].includes(normalized)) return 'Nuevo';
+
+            return normalized.replace(/_/g, ' ');
+        }
+
+        function getStatusClass(order) {
+            if (order.status === 'error') return 'error';
+
+            const normalized = String(order.uberStatus || '').toLowerCase();
+            if (['completed', 'delivered'].includes(normalized)) return 'success';
+            if (['cancelled', 'canceled', 'failed', 'rejected'].includes(normalized)) return 'error';
+
+            return 'processing';
+        }
+
         function createOrderCard(order) {
             const card = document.createElement('div');
             card.className = 'order-card';
 
-            const statusClass = order.status === 'success' ? 'success' : order.status === 'error' ? 'error' : 'processing';
-            const statusText = order.status === 'success' ? 'Exitosa' : order.status === 'error' ? 'Error' : 'Procesando';
+            const statusClass = getStatusClass(order);
+            const statusText = order.status === 'error' ? 'Error' : getUberStatusLabel(order.uberStatus);
 
             let itemsHTML = '';
-            if (order.orderData && order.orderData.plus) {
-                itemsHTML = order.orderData.plus.map(item => \`
+            if (order.items && order.items.length > 0) {
+                itemsHTML = order.items.map(item => \`
                     <div class="item">
-                        <span class="item-name">\${item.plu || 'Item'}</span>
+                        <span class="item-name">\${item.name || 'Item'}</span>
                         <span class="item-qty">x\${item.quantity}</span>
-                        <span class="item-price">$\${item.subTotal.toFixed(2)}</span>
+                        <span class="item-price">$\${Number(item.price || 0).toFixed(2)}</span>
                     </div>
                 \`).join('');
             }
 
             let totalsHTML = '';
-            if (order.orderData) {
+            if (order.totals) {
                 totalsHTML = \`
-                    <div class="total-row subtotal">
-                        <span>Subtotal:</span>
-                        <span>$\${(order.orderData.subTotal || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="total-row tax">
-                        <span>Impuesto:</span>
-                        <span>$\${(order.orderData.tax || 0).toFixed(2)}</span>
-                    </div>
                     <div class="total-row total">
                         <span>Total:</span>
-                        <span>$\${((order.orderData.subTotal || 0) + (order.orderData.tax || 0)).toFixed(2)}</span>
+                        <span>$\${(order.totals.total || 0).toFixed(2)} \${order.totals.currency || ''}</span>
                     </div>
                 \`;
             }
@@ -490,13 +504,13 @@ class POSController {
             card.innerHTML = \`
                 <div class="order-header">
                     <div>
-                        <div class="order-id">Orden: \${order.uberOrderId}</div>
+                        <div class="order-id">Orden: \${order.uberOrderNumber || order.uberOrderId}</div>
                         <div class="order-time">\${formatTime(order.timestamp)}</div>
                     </div>
                     <div class="order-status \${statusClass}">\${statusText}</div>
                 </div>
                 <div class="order-body">
-                    \${order.orderData ? \`
+                    \${order.items ? \`
                         <div class="order-items">
                             <h4>Items</h4>
                             \${itemsHTML}
@@ -504,9 +518,14 @@ class POSController {
                         <div class="order-totals">
                             \${totalsHTML}
                         </div>
-                        \${order.orderData.observation ? \`
+                        \${order.customerName ? \`
                             <div class="order-customer">
-                                <strong>📍 Notas:</strong> \${order.orderData.observation}
+                                <strong>Cliente:</strong> \${order.customerName}
+                            </div>
+                        \` : ''}
+                        \${order.notes ? \`
+                            <div class="order-notes">
+                                <strong>Notas:</strong> \${order.notes}
                             </div>
                         \` : ''}
                     \` : ''}

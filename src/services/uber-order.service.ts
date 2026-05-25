@@ -60,6 +60,42 @@ class UberOrderService {
   }
 
   /**
+   * Obtiene detalles de orden usando un resource_href de webhook
+   * @param resourceHref URL completa del recurso de la orden
+   */
+  async getOrderDetailsByResourceHref(resourceHref: string): Promise<any> {
+    if (!resourceHref) {
+      throw new Error('resourceHref requerido para obtener detalles de orden');
+    }
+
+    try {
+      logger.info('Obteniendo detalles de orden desde resource_href', {
+        resourceHref,
+      });
+
+      const accessToken = await uberAuthService.getAccessToken();
+
+      const response = await this.axiosInstance.get(resourceHref, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      logger.error('Error al obtener detalles desde resource_href', error);
+
+      if (error.response?.status === 401) {
+        logger.warn('Token expirado, invalidando cache');
+        uberAuthService.invalidateToken();
+      }
+
+      throw new Error('No se pudieron obtener los detalles desde resource_href');
+    }
+  }
+
+  /**
    * Acepta una orden en Uber Eats
    * @param orderId ID de la orden en Uber
    */

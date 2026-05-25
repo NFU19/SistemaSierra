@@ -99,15 +99,22 @@ class UberWebhookController {
    * Valida que el payload del webhook sea un UberWebhookPayload válido
    */
   private isValidPayload(body: any): body is UberWebhookPayload {
-    return (
-      body &&
-      typeof body === 'object' &&
-      typeof body.event_id === 'string' &&
-      typeof body.event_type === 'string' &&
+    if (!body || typeof body !== 'object') {
+      return false;
+    }
+
+    if (typeof body.event_id !== 'string' || typeof body.event_type !== 'string') {
+      return false;
+    }
+
+    const hasLegacyData =
       body.data &&
-      (typeof body.data.order_id === 'string' || typeof body.data.resource_id === 'string') &&
-      typeof body.data.store_id === 'string'
-    );
+      (typeof body.data.order_id === 'string' || typeof body.data.resource_id === 'string');
+
+    const hasResourceRef =
+      typeof body.resource_href === 'string' || typeof body.resource_id === 'string';
+
+    return hasLegacyData || hasResourceRef;
   }
 }
 

@@ -4,15 +4,32 @@
  */
 
 import { EventEmitter } from 'events';
-import { OrderTicket } from '../interfaces/sierra.interface';
+
+interface PosOrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+interface PosOrderTotals {
+  subtotal: number;
+  tax: number;
+  total: number;
+  currency: string;
+}
 
 interface ProcessedOrder {
   id: string;
   uberOrderId: string;
+  uberOrderNumber?: string;
   timestamp: string;
   status: 'processing' | 'success' | 'error';
+  uberStatus?: string;
   message: string;
-  orderData?: OrderTicket;
+  items?: PosOrderItem[];
+  totals?: PosOrderTotals;
+  customerName?: string;
+  notes?: string | null;
   errorDetails?: any;
 }
 

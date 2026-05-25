@@ -3,13 +3,13 @@
  * Coordina el flujo completo: recepción → mapeo → envío a Sierra
  */
 
-import { UberWebhookPayload } from '../interfaces/uber.interface';
 import { logger } from '../utils/logger';
 import { uberOrderService } from './uber-order.service';
 import { orderMapperService } from './order-mapper.service';
 import { sierraIntegrationService } from './sierra-integration.service';
 import { eventService } from './event.service';
 import { config } from '../config/config';
+import { UberOrderDetails, UberWebhookPayload } from '../interfaces/uber.interface';
 
 interface ProcessingResult {
   success: boolean;
@@ -37,8 +37,10 @@ class WebhookProcessingService {
    */
   private async processWebhookInternal(webhook: UberWebhookPayload): Promise<ProcessingResult> {
     const startTime = Date.now();
-    const uberOrderId = webhook.data.order_id || webhook.data.resource_id || '';
-    const webhookStoreId = webhook.data.store_id;
+    const webhookStoreId = webhook.data?.store_id;
+    const uberOrderId = this.getOrderIdFromWebhook(webhook);
+    let uberOrderDetails: UberOrderDetails | null = null;
+    let resourceHref: string | undefined;
 
     try {
       logger.info(`Iniciando procesamiento de orden Uber: ${uberOrderId}`);
@@ -50,7 +52,7 @@ class WebhookProcessingService {
         };
       }
 
-      if (config.uber.storeId && webhookStoreId !== config.uber.storeId) {
+      if (config.uber.storeId && webhookStoreId && webhookStoreId !== config.uber.storeId) {
         logger.warn('Webhook ignorado por store_id no coincidente', {
           uberOrderId,
           webhookStoreId,
@@ -66,7 +68,37 @@ class WebhookProcessingService {
 
       // Paso 1: Obtener detalles completos de la orden
       logger.debug('Paso 1: Obteniendo detalles de orden de Uber...');
-      const uberOrderDetails = await uberOrderService.getOrderDetails(uberOrderId);
+      resourceHref = webhook.resource_href;
+
+      if (resourceHref) {
+        const orderDetails = await uberOrderService.getOrderDetailsByResourceHref(resourceHref);
+
+        if (this.isLegacyUberOrderDetails(orderDetails)) {
+          uberOrderDetails = orderDetails;
+        } else {
+          logger.warn('Formato de orden no compatible con el mapeo actual', {
+            uberOrderId,
+            resourceHref,
+          });
+
+          eventService.emitOrderProcessed({
+            id: `order_${Date.now()}`,
+            uberOrderId,
+            timestamp: new Date().toISOString(),
+            status: 'processing',
+            uberStatus: webhook.event_type,
+            message: 'Orden recibida (detalle no compatible)',
+          });
+
+          return {
+            success: true,
+            message: 'Orden recibida, pendiente de mapeo',
+            uberOrderId,
+          };
+        }
+      } else {
+        uberOrderDetails = await uberOrderService.getOrderDetails(uberOrderId);
+      }
 
       if (config.uber.storeId && uberOrderDetails.store_id !== config.uber.storeId) {
         logger.warn('Orden ignorada por store_id no coincidente en detalles', {
@@ -105,10 +137,24 @@ class WebhookProcessingService {
       const successOrder = {
         id: `order_${Date.now()}`,
         uberOrderId,
+        uberOrderNumber: uberOrderDetails.order_number,
         timestamp: new Date().toISOString(),
         status: 'success' as const,
+        uberStatus: uberOrderDetails.status,
         message: 'Orden creada exitosamente en Sierra',
-        orderData: sierraOrderTicket,
+        items: uberOrderDetails.items.map((item) => ({
+          name: item.title,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        totals: {
+          subtotal: uberOrderDetails.totals.subtotal,
+          tax: uberOrderDetails.totals.tax,
+          total: uberOrderDetails.totals.total,
+          currency: uberOrderDetails.totals.currency,
+        },
+        customerName: `${uberOrderDetails.customer.first_name} ${uberOrderDetails.customer.last_name}`,
+        notes: uberOrderDetails.special_instructions,
       };
 
       eventService.emitOrderProcessed(successOrder);
@@ -124,7 +170,33 @@ class WebhookProcessingService {
 
       logger.error(`Error procesando orden ${uberOrderId} después de ${processingTime}ms`, error);
 
-      eventService.emitOrderError(uberOrderId, error);
+      if (uberOrderDetails) {
+        eventService.emitOrderProcessed({
+          id: `err_${uberOrderId}_${Date.now()}`,
+          uberOrderId,
+          uberOrderNumber: uberOrderDetails.order_number,
+          timestamp: new Date().toISOString(),
+          status: 'error',
+          uberStatus: uberOrderDetails.status,
+          message: error.message || 'Error desconocido',
+          items: uberOrderDetails.items.map((item) => ({
+            name: item.title,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          totals: {
+            subtotal: uberOrderDetails.totals.subtotal,
+            tax: uberOrderDetails.totals.tax,
+            total: uberOrderDetails.totals.total,
+            currency: uberOrderDetails.totals.currency,
+          },
+          customerName: `${uberOrderDetails.customer.first_name} ${uberOrderDetails.customer.last_name}`,
+          notes: uberOrderDetails.special_instructions,
+          errorDetails: error,
+        });
+      } else {
+        eventService.emitOrderError(uberOrderId, error);
+      }
 
       return {
         success: false,
@@ -147,6 +219,44 @@ class WebhookProcessingService {
     logger.debug('Validando firma de webhook (función placeholder)');
     // Por ahora, siempre retorna true. En producción, validar con HMAC
     return true;
+  }
+
+  private getOrderIdFromWebhook(webhook: UberWebhookPayload): string {
+    if (webhook.data?.order_id) {
+      return webhook.data.order_id;
+    }
+
+    if (webhook.data?.resource_id) {
+      return webhook.data.resource_id;
+    }
+
+    if (webhook.resource_id) {
+      return webhook.resource_id;
+    }
+
+    if (webhook.resource_href) {
+      try {
+        const url = new URL(webhook.resource_href);
+        const segments = url.pathname.split('/').filter(Boolean);
+        return segments[segments.length - 1] || '';
+      } catch (error) {
+        logger.warn('No se pudo parsear resource_href', {
+          resourceHref: webhook.resource_href,
+        });
+      }
+    }
+
+    return '';
+  }
+
+  private isLegacyUberOrderDetails(orderDetails: any): orderDetails is UberOrderDetails {
+    return (
+      orderDetails &&
+      typeof orderDetails === 'object' &&
+      Array.isArray(orderDetails.items) &&
+      orderDetails.totals &&
+      orderDetails.customer
+    );
   }
 }
 
