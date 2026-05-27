@@ -4,20 +4,20 @@
 
 export interface UberWebhookPayload {
   event_id: string;
-  timestamp?: number;
   event_time?: number;
-  event_type: string;
-  data?: UberOrderEvent;
+  timestamp?: number;
+  event_type: 'orders.notification' | 'order.created' | 'order.updated' | 'order.cancelled' | string;
+  meta?: {
+    user_id?: string;
+    resource_id: string; // Este es el UUID de la orden en el formato oficial
+    status?: string;
+  };
   resource_href?: string;
-  resource_id?: string;
-  meta?: Record<string, any>;
-  webhook_meta?: Record<string, any>;
+  data?: UberOrderEvent; // Formato anterior o alternativo
 }
 
 export interface UberOrderEvent {
-  order_id?: string;
-  resource_id?: string;
-  resource_href?: string;
+  order_id: string;
   store_id: string;
   timestamp: number;
   platform: 'eats' | string;

@@ -50,8 +50,8 @@ tests/              # Pruebas automáticas
 ## 🔐 Credenciales Configuradas
 
 Todas las credenciales están en `.env`:
-- UBER_CLIENT_ID: sYOHLc-1Pxx7911FDp63a5ML_gV8gLpj
-- UBER_CLIENT_SECRET: HKnI6_m5WldhMMaCmFVJoVjHW5enjCoKP0jFCtKb
+- UBER_CLIENT_ID: bk1eINyRuX6kZUxVpVduze0MyVfjx91f
+- UBER_CLIENT_SECRET: Gf8EDOG4rd7XZ7puUJ8KVMDix1WRRvB7dYzFBdAb
 - SIERRA_API_URL: https://demo-services-alternative.sierraerp.com
 - SIERRA_API_KEY: CxzKRteOXeAr5fpa1D2wOm4tlMs64Jsz6wPoYQye8Kdz6sgZ9r0w9JOh3JbJZmlV
 

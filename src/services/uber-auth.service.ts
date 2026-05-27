@@ -39,7 +39,7 @@ class UberAuthService {
           grant_type: 'client_credentials',
           client_id: config.uber.clientId,
           client_secret: config.uber.clientSecret,
-          scope: config.uber.oauthScope,
+          scope: 'eats.order.read',
         }),
         {
           headers: {

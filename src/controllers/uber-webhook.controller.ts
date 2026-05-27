@@ -99,22 +99,15 @@ class UberWebhookController {
    * Valida que el payload del webhook sea un UberWebhookPayload válido
    */
   private isValidPayload(body: any): body is UberWebhookPayload {
-    if (!body || typeof body !== 'object') {
-      return false;
-    }
-
-    if (typeof body.event_id !== 'string' || typeof body.event_type !== 'string') {
-      return false;
-    }
-
-    const hasLegacyData =
-      body.data &&
-      (typeof body.data.order_id === 'string' || typeof body.data.resource_id === 'string');
-
-    const hasResourceRef =
-      typeof body.resource_href === 'string' || typeof body.resource_id === 'string';
-
-    return hasLegacyData || hasResourceRef;
+    if (!body || typeof body !== 'object') return false;
+    if (typeof body.event_id !== 'string') return false;
+    if (typeof body.event_type !== 'string') return false;
+    
+    // Validar formato nuevo (oficial de Uber Eats) o formato anterior
+    const hasNewFormat = body.meta && typeof body.meta.resource_id === 'string';
+    const hasOldFormat = body.data && typeof body.data.order_id === 'string';
+    
+    return hasNewFormat || hasOldFormat;
   }
 }
 
