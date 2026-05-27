@@ -15,8 +15,10 @@ export const config = {
   uber: {
     clientId: process.env.UBER_CLIENT_ID || '',
     clientSecret: process.env.UBER_CLIENT_SECRET || '',
-    authUrl: process.env.UBER_AUTH_URL || 'https://auth.uber.com/oauth/v2/token',
-  },
+    authUrl: process.env.UBER_AUTH_URL || 'https://auth.uber.com/oauth/v2/token',    apiBaseUrl: process.env.UBER_API_BASE_URL || 'https://test-api.uber.com',
+    storeId: process.env.UBER_STORE_ID || '',
+    storeName: process.env.UBER_STORE_NAME || '',
+    menuPath: process.env.UBER_MENU_PATH || '',  },
 
   // Sistemas Sierra
   sierra: {

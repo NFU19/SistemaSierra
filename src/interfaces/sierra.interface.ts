@@ -37,3 +37,21 @@ export interface SierraOrderResponse {
   timestamp: string;
   status: string;
 }
+
+export interface SierraPluItem {
+  id?: string;
+  nombre_corto?: string;
+  nombre_largo?: string;
+  descripcion?: string;
+  precio1?: number;
+  precio?: number;
+  imagen?: string;
+  categoria?: string;
+  [key: string]: any;
+}
+
+export interface SierraPluStockData {
+  plu?: string;
+  cantidad?: number;
+  [key: string]: any;
+}
