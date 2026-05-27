@@ -65,8 +65,13 @@ class UberOrderService {
           lastError = error;
           const status = error.response?.status;
           const statusText = error.response?.statusText;
+          const errorData = error.response?.data;
           
-          logger.warn(`Endpoint ${endpoint} falló (${status} ${statusText})`);
+          logger.warn(`Endpoint ${endpoint} falló (${status} ${statusText})`, {
+            url: error.config?.url,
+            method: error.config?.method,
+            errorData,
+          });
 
           // Si es error de autenticación, no seguimos intentando
           if (status === 401) {
