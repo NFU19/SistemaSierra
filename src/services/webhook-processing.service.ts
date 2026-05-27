@@ -36,9 +36,8 @@ class WebhookProcessingService {
    */
   private async processWebhookInternal(webhook: UberWebhookPayload): Promise<ProcessingResult> {
     const startTime = Date.now();
-    // Extraemos el UUID de la orden directamente desde meta.resource_id que es el estándar de Uber
-    // Opcionalmente hacemos fallback al formato antiguo si data.order_id existe
-    const uberOrderId = webhook.meta?.resource_id || webhook.data?.order_id;
+    // Extraemos el UUID de la orden: formato nuevo (meta.resource_id), formato data, o formato orders.notification (root order_id)
+    const uberOrderId = webhook.meta?.resource_id || webhook.data?.order_id || webhook.order_id;
 
     if (!uberOrderId) {
       throw new Error('No se pudo extraer el UUID (orderId) del payload del webhook');

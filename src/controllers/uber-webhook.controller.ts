@@ -103,11 +103,12 @@ class UberWebhookController {
     if (typeof body.event_id !== 'string') return false;
     if (typeof body.event_type !== 'string') return false;
     
-    // Validar formato nuevo (oficial de Uber Eats) o formato anterior
+    // Validar formato nuevo (oficial de Uber Eats) o formatos anteriores
     const hasNewFormat = body.meta && typeof body.meta.resource_id === 'string';
-    const hasOldFormat = body.data && typeof body.data.order_id === 'string';
+    const hasDataFormat = body.data && typeof body.data.order_id === 'string';
+    const hasRootOrderId = typeof body.order_id === 'string'; // orders.notification pone order_id en la raíz
     
-    return hasNewFormat || hasOldFormat;
+    return hasNewFormat || hasDataFormat || hasRootOrderId;
   }
 }
 

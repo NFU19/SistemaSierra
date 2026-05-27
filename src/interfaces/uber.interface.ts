@@ -7,13 +7,15 @@ export interface UberWebhookPayload {
   event_time?: number;
   timestamp?: number;
   event_type: 'orders.notification' | 'order.created' | 'order.updated' | 'order.cancelled' | string;
+  order_id?: string; // Formato orders.notification (root-level)
+  type?: string;     // Formato orders.notification (NEW, CANCELLED, etc.)
   meta?: {
     user_id?: string;
-    resource_id: string; // Este es el UUID de la orden en el formato oficial
+    resource_id: string; // Este es el UUID de la orden en el formato eats.order
     status?: string;
   };
   resource_href?: string;
-  data?: UberOrderEvent; // Formato anterior o alternativo
+  data?: UberOrderEvent; // Formato alternativo
 }
 
 export interface UberOrderEvent {
