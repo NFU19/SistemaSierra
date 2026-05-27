@@ -2,7 +2,7 @@
  * Servicio de Mapeo: Translada órdenes de Uber Eats al formato de Sistemas Sierra
  */
 
-import { OrderTicket, PluOrder } from '../interfaces/sierra.interface';
+import { OrderTicket, PluOrder, ClientOrder } from '../interfaces/sierra.interface';
 import { UberOrderDetails } from '../interfaces/uber.interface';
 import { logger } from '../utils/logger';
 
@@ -23,12 +23,18 @@ class OrderMapperService {
       const subTotal = mappedPlus.reduce((acc, item) => acc + item.subTotal, 0);
       const tax = uberOrder.totals.tax;
 
+      const client: ClientOrder[] = [{
+        nombre: `${uberOrder.customer.first_name} ${uberOrder.customer.last_name}`.trim() || 'Uber Eats',
+        telefono: uberOrder.customer.phone_number || '0000000000',
+      }];
+
       const orderTicket: OrderTicket = {
         order: uberOrder.id, // Usar el order_id de Uber como identificador único
         subTotal: Math.round(subTotal * 100) / 100, // Redondear a 2 decimales
         tax: Math.round(tax * 100) / 100,
         orderType: 'ORDEN WEB ONLINE',
         plus: mappedPlus,
+        client,
         observation: this.buildObservation(uberOrder),
         salesType: 'DELIVERY',
         employeeNumber: 0, // El sistema asignará un empleado automático

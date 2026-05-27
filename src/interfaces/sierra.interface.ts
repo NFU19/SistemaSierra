@@ -2,12 +2,18 @@
  * Interfaces para los tipos de datos de Sistemas Sierra POS
  */
 
+export interface ClientOrder {
+  nombre: string;
+  telefono?: string;
+}
+
 export interface OrderTicket {
   order: string;
   subTotal: number;
   tax: number;
   orderType: string;
   plus: PluOrder[];
+  client: ClientOrder[];
   observation?: string;
   salesType?: string;
   tableNumber?: number;
