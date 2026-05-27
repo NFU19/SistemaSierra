@@ -24,17 +24,14 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use((req: Request, res: Response, next) => {
   const startTime = Date.now();
 
-  // Log al inicio
-  logger.debug(`→ ${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get('user-agent'),
-  });
-
   // Capturar el metodo res.send original
   const originalSend = res.send;
   res.send = function (data: any) {
     const duration = Date.now() - startTime;
-    logger.debug(`← ${req.method} ${req.path} ${res.statusCode} (+${duration}ms)`);
+    // Log INFO para webhooks, DEBUG para el resto
+    const isWebhook = req.path.startsWith('/webhook');
+    const logFn = isWebhook ? logger.info.bind(logger) : logger.debug.bind(logger);
+    logFn(`${req.method} ${req.path} → ${res.statusCode} (+${duration}ms)`);
     return originalSend.call(this, data);
   };
 

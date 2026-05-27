@@ -14,14 +14,24 @@ class UberWebhookController {
    */
   async handleOrderWebhook(req: Request, res: Response): Promise<void> {
     try {
-      logger.debug('Webhook recibido de Uber', {
-        headers: req.headers,
-        body: req.body,
+      // Log siempre en INFO para poder ver si Uber está enviando webhooks en producción
+      logger.info('📥 Webhook recibido', {
+        event_type: req.body?.event_type,
+        event_id: req.body?.event_id,
+        order_id: req.body?.order_id || req.body?.meta?.resource_id || req.body?.data?.order_id,
+        keys: Object.keys(req.body || {}),
       });
 
       // Validar que el payload sea válido
       if (!this.isValidPayload(req.body)) {
-        logger.warn('Payload de webhook inválido', req.body);
+        logger.warn('Payload de webhook inválido — campos recibidos', {
+          keys: Object.keys(req.body || {}),
+          event_id_present: 'event_id' in (req.body || {}),
+          event_type: req.body?.event_type,
+          has_meta_resource_id: !!req.body?.meta?.resource_id,
+          has_data_order_id: !!req.body?.data?.order_id,
+          has_root_order_id: !!req.body?.order_id,
+        });
         res.status(400).json({
           success: false,
           error: 'Payload inválido',
@@ -100,10 +110,8 @@ class UberWebhookController {
    */
   private isValidPayload(body: any): body is UberWebhookPayload {
     if (!body || typeof body !== 'object') return false;
-    if (typeof body.event_id !== 'string') return false;
-    if (typeof body.event_type !== 'string') return false;
-    
-    // Validar formato nuevo (oficial de Uber Eats) o formatos anteriores
+    // event_id es opcional — algunos formatos de Uber no lo incluyen
+    // Sólo requerimos poder extraer un order_id de alguna forma conocida
     const hasNewFormat = body.meta && typeof body.meta.resource_id === 'string';
     const hasDataFormat = body.data && typeof body.data.order_id === 'string';
     const hasRootOrderId = typeof body.order_id === 'string'; // orders.notification pone order_id en la raíz
