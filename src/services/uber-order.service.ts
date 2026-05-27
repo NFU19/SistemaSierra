@@ -30,25 +30,66 @@ class UberOrderService {
 
       const accessToken = await uberAuthService.getAccessToken();
 
-      const response = await this.axiosInstance.get<UberOrderDetails>(
+      // Intentamos con diferentes endpoints
+      const endpoints = [
+        `/v2/eats/orders/${orderId}`,
         `/v1/eats/orders/${orderId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: 'application/json',
-          },
+        `/v2/orders/${orderId}`,
+        `/v1/orders/${orderId}`,
+      ];
+
+      let lastError: any;
+
+      for (const endpoint of endpoints) {
+        try {
+          logger.debug(`Intentando endpoint: ${endpoint}`);
+          
+          const response = await this.axiosInstance.get<UberOrderDetails>(
+            endpoint,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json',
+              },
+            }
+          );
+
+          logger.debug(`Detalles de orden obtenidos desde ${endpoint}`, {
+            orderId,
+            status: response.data.status,
+            itemsCount: response.data.items.length,
+          });
+
+          return response.data;
+        } catch (error: any) {
+          lastError = error;
+          const status = error.response?.status;
+          const statusText = error.response?.statusText;
+          
+          logger.warn(`Endpoint ${endpoint} falló (${status} ${statusText})`);
+
+          // Si es error de autenticación, no seguimos intentando
+          if (status === 401) {
+            logger.error('Error de autenticación (401), token inválido');
+            uberAuthService.invalidateToken();
+            throw error;
+          }
+
+          // Continuamos con el siguiente endpoint si es 404
+          if (status !== 404) {
+            // Si no es 404 pero es otro error, podríamos considerar fallar
+            logger.warn(`Error no 404 en ${endpoint}: ${statusText}`);
+          }
         }
+      }
+
+      // Si llegamos aquí, todos los endpoints fallaron
+      logger.error(`Todos los endpoints fallaron para orden ${orderId}`, lastError);
+      throw new Error(
+        `No se pudieron obtener los detalles de la orden ${orderId} en ningún endpoint`
       );
-
-      logger.debug('Detalles de orden obtenidos', {
-        orderId,
-        status: response.data.status,
-        itemsCount: response.data.items.length,
-      });
-
-      return response.data;
     } catch (error: any) {
-      logger.error(`Error al obtener detalles de orden ${orderId}`, error);
+      logger.error(`Error crítico al obtener detalles de orden ${orderId}`, error);
 
       if (error.response?.status === 401) {
         logger.warn('Token expirado, invalidando caché');

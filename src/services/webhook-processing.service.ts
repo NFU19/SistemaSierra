@@ -47,9 +47,21 @@ class WebhookProcessingService {
     try {
       logger.info(`Iniciando procesamiento de orden Uber: ${uberOrderId}`);
 
-      // Paso 1: Obtener detalles completos de la orden
+      // Paso 1: Obtener detalles completos de la orden (con reintentos)
       logger.debug('Paso 1: Obteniendo detalles de orden de Uber...');
-      const uberOrderDetails = await uberOrderService.getOrderDetails(uberOrderId);
+      
+      let uberOrderDetails: any;
+      let obtenerDetallesFallo = false;
+
+      try {
+        uberOrderDetails = await this.getOrderDetailsWithRetry(uberOrderId, 3);
+      } catch (detailsError: any) {
+        logger.warn(`No se pudieron obtener los detalles de la orden ${uberOrderId}, continuando con webhook payload`, detailsError.message);
+        obtenerDetallesFallo = true;
+
+        // Crear un objeto mínimo con información del webhook como fallback
+        uberOrderDetails = this.createMinimalOrderFromWebhook(uberOrderId, webhook);
+      }
 
       // Paso 2: Mapear a formato Sierra
       logger.debug('Paso 2: Mapeando orden a formato Sierra...');
@@ -61,10 +73,15 @@ class WebhookProcessingService {
 
       const processingTime = Date.now() - startTime;
 
-      logger.info(`Orden procesada exitosamente en ${processingTime}ms`, {
+      const logMessage = obtenerDetallesFallo 
+        ? `Orden procesada (sin detalles completos) en ${processingTime}ms`
+        : `Orden procesada exitosamente en ${processingTime}ms`;
+
+      logger.info(logMessage, {
         uberOrderId,
         sierraOrderId: sierraResponse.orderId,
         processingTime,
+        detallesFallo: obtenerDetallesFallo,
       });
 
       const successOrder = {
@@ -72,7 +89,9 @@ class WebhookProcessingService {
         uberOrderId,
         timestamp: new Date().toISOString(),
         status: 'success' as const,
-        message: 'Orden creada exitosamente en Sierra',
+        message: obtenerDetallesFallo 
+          ? 'Orden creada en Sierra (detalles incompletos)' 
+          : 'Orden creada exitosamente en Sierra',
         orderData: sierraOrderTicket,
       };
 
@@ -98,6 +117,75 @@ class WebhookProcessingService {
         error: error.stack || error.toString(),
       };
     }
+  }
+
+  /**
+   * Intenta obtener los detalles de la orden con reintentos
+   * @param orderId ID de la orden
+   * @param maxRetries Número máximo de reintentos
+   * @returns Detalles de la orden
+   */
+  private async getOrderDetailsWithRetry(orderId: string, maxRetries: number = 3): Promise<any> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.debug(`Intento ${attempt}/${maxRetries} obtener detalles de orden ${orderId}`);
+        return await uberOrderService.getOrderDetails(orderId);
+      } catch (error: any) {
+        lastError = error;
+        logger.warn(`Intento ${attempt} falló para orden ${orderId}:`, error.message);
+
+        // No reintentar si es error de autenticación
+        if (error.message?.includes('401') || error.message?.includes('Token')) {
+          throw error;
+        }
+
+        // Esperar antes de reintentar (backoff exponencial)
+        if (attempt < maxRetries) {
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * Crea un objeto minimal de orden cuando no se pueden obtener los detalles
+   * @param orderId ID de la orden
+   * @param webhook Payload del webhook
+   * @returns Objeto con información mínima de la orden
+   */
+  private createMinimalOrderFromWebhook(orderId: string, webhook: UberWebhookPayload): any {
+    logger.warn(`Creando objeto mínimo de orden para ${orderId} usando información del webhook`);
+
+    return {
+      id: orderId,
+      store_id: webhook.meta?.user_id || 'unknown',
+      order_number: orderId.substring(0, 8),
+      timestamp: webhook.event_time || webhook.timestamp || Date.now(),
+      status: webhook.meta?.status || 'pos',
+      items: [], // Vacío porque no tenemos detalles
+      customer: {
+        id: webhook.meta?.user_id || 'unknown',
+        first_name: 'Customer',
+        last_name: '',
+        email: '',
+        phone_number: '',
+      },
+      totals: {
+        subtotal: 0,
+        tax: 0,
+        delivery_fee: 0,
+        promotion: 0,
+        total: 0,
+        currency: 'MXN',
+      },
+      special_instructions: `Orden sin detalles completos. Webhook recibido: ${webhook.event_type}`,
+      _incomplete: true, // Flag indicando que es incompleta
+    };
   }
 
   /**
