@@ -1,5 +1,6 @@
 /**
  * Servicio para obtener detalles de órdenes desde Uber Eats
+ * Usa la Order Fulfillment API v1: GET /v1/delivery/order/{order_id}
  */
 
 import axios, { AxiosInstance } from 'axios';
@@ -9,7 +10,6 @@ import { UberOrderDetails } from '../interfaces/uber.interface';
 
 class UberOrderService {
   private axiosInstance: AxiosInstance;
-  // Usamos el entorno Test de Uber Eats para las llamadas a la API
   private baseUrl = 'https://test-api.uber.com';
 
   constructor() {
@@ -21,83 +21,47 @@ class UberOrderService {
 
   /**
    * Obtiene los detalles completos de una orden de Uber
-   * @param orderId ID de la orden en Uber
-   * @returns Detalles de la orden
+   * Endpoint: GET /v1/delivery/order/{order_id}?expand=carts
    */
   async getOrderDetails(orderId: string): Promise<UberOrderDetails> {
+    logger.info(`Obteniendo detalles de orden de Uber: ${orderId}`);
+
+    const accessToken = await uberAuthService.getAccessToken();
+
     try {
-      logger.info(`Obteniendo detalles de orden de Uber: ${orderId}`);
+      logger.debug(`Intentando endpoint: /v1/delivery/order/${orderId}`);
 
-      const accessToken = await uberAuthService.getAccessToken();
-
-      // Intentamos con diferentes endpoints
-      const endpoints = [
-        `/v2/eats/orders/${orderId}`,
-        `/v1/eats/orders/${orderId}`,
-        `/v2/orders/${orderId}`,
-        `/v1/orders/${orderId}`,
-      ];
-
-      let lastError: any;
-
-      for (const endpoint of endpoints) {
-        try {
-          logger.debug(`Intentando endpoint: ${endpoint}`);
-          
-          const response = await this.axiosInstance.get<UberOrderDetails>(
-            endpoint,
-            {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                Accept: 'application/json',
-              },
-            }
-          );
-
-          logger.debug(`Detalles de orden obtenidos desde ${endpoint}`, {
-            orderId,
-            status: response.data.status,
-            itemsCount: response.data.items.length,
-          });
-
-          return response.data;
-        } catch (error: any) {
-          lastError = error;
-          const status = error.response?.status;
-          const statusText = error.response?.statusText;
-          const errorData = error.response?.data;
-          
-          logger.warn(`Endpoint ${endpoint} falló (${status} ${statusText})`, {
-            url: error.config?.url,
-            method: error.config?.method,
-            errorData,
-          });
-
-          // Si es error de autenticación, no seguimos intentando
-          if (status === 401) {
-            logger.error('Error de autenticación (401), token inválido');
-            uberAuthService.invalidateToken();
-            throw error;
-          }
-
-          // Continuamos con el siguiente endpoint si es 404
-          if (status !== 404) {
-            // Si no es 404 pero es otro error, podríamos considerar fallar
-            logger.warn(`Error no 404 en ${endpoint}: ${statusText}`);
-          }
+      const response = await this.axiosInstance.get(
+        `/v1/delivery/order/${orderId}`,
+        {
+          params: { expand: 'carts' },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json',
+          },
         }
-      }
-
-      // Si llegamos aquí, todos los endpoints fallaron
-      logger.error(`Todos los endpoints fallaron para orden ${orderId}`, lastError);
-      throw new Error(
-        `No se pudieron obtener los detalles de la orden ${orderId} en ningún endpoint`
       );
-    } catch (error: any) {
-      logger.error(`Error crítico al obtener detalles de orden ${orderId}`, error);
 
-      if (error.response?.status === 401) {
-        logger.warn('Token expirado, invalidando caché');
+      // La API devuelve { order: {...} } — normalizamos al formato interno
+      const raw = response.data?.order ?? response.data;
+      const normalized = this.normalizeOrderResponse(raw, orderId);
+
+      logger.debug(`Orden obtenida exitosamente`, {
+        orderId,
+        itemsCount: normalized.items.length,
+        status: normalized.status,
+      });
+
+      return normalized;
+    } catch (error: any) {
+      const status = error.response?.status;
+
+      logger.error(`Error al obtener orden ${orderId} (${status})`, {
+        url: error.config?.url,
+        errorData: error.response?.data,
+      });
+
+      if (status === 401) {
         uberAuthService.invalidateToken();
       }
 
@@ -106,16 +70,135 @@ class UberOrderService {
   }
 
   /**
-   * Mapea un ID de producto de Uber a un código PLU de Sierra
-   * Esta es una función placeholder que debe ser implementada según la lógica de negocio
-   * @param uberItemId ID del ítem en Uber
-   * @returns Código PLU en Sierra
+   * Normaliza la respuesta de la Order Fulfillment API al formato UberOrderDetails
+   * Soporta tanto la nueva estructura ({ order: {...}, carts: [...] })
+   * como la estructura legacy ({ id, items, customer, totals }).
    */
-  mapUberItemToSierraPlu(uberItemId: string): string {
-    // TODO: Implementar mapeo de catálogos entre Uber y Sierra
-    // Por ahora, usamos el ID de Uber como PLU
-    logger.debug(`Mapeando Uber item ${uberItemId} a PLU`);
-    return uberItemId;
+  private normalizeOrderResponse(raw: any, orderId: string): UberOrderDetails {
+    // Formato nuevo: customers[] y carts[]
+    if (raw.customers || raw.carts) {
+      const customer = raw.customers?.[0] ?? {};
+      // Los items pueden estar en carts[].items o directo en items[]
+      const items: any[] = raw.carts
+        ? raw.carts.flatMap((cart: any) => cart.items ?? [])
+        : raw.items ?? [];
+
+      const mappedItems = items.map((item: any) => ({
+        id: item.id ?? item.external_id ?? '',
+        title: item.title ?? item.name ?? '',
+        quantity: item.quantity ?? 1,
+        unit_price: this.parseCentAmount(item.unit_price ?? item.price),
+        price: this.parseCentAmount(item.price ?? item.unit_price),
+        currency: item.currency ?? 'MXN',
+        customizations: this.mapModifierGroups(item.selected_modifier_groups ?? item.customizations),
+      }));
+
+      const charges = raw.payment?.charges ?? {};
+      const subTotalCents = charges.sub_total?.amount ?? charges.subtotal?.amount ?? 0;
+      const taxCents = charges.tax?.amount ?? charges.taxes?.amount ?? 0;
+
+      return {
+        id: raw.id ?? orderId,
+        store_id: raw.store?.id ?? '',
+        order_number: raw.display_id ?? raw.id ?? orderId,
+        timestamp: raw.created_time ? new Date(raw.created_time).getTime() : Date.now(),
+        status: raw.state ?? raw.status ?? 'CREATED',
+        items: mappedItems,
+        customer: {
+          id: customer.id ?? '',
+          first_name: customer.first_name ?? 'Uber',
+          last_name: customer.last_name ?? 'Eats',
+          phone_number: customer.phone ?? customer.phone_number ?? '',
+          email: customer.email ?? '',
+        },
+        totals: {
+          subtotal: subTotalCents / 100,
+          tax: taxCents / 100,
+          delivery_fee: (charges.delivery_fee?.amount ?? 0) / 100,
+          promotion: (charges.promotion?.amount ?? 0) / 100,
+          total: (charges.total?.amount ?? 0) / 100,
+          currency: 'MXN',
+        },
+        special_instructions: raw.store_instructions ?? raw.special_instructions ?? null,
+      };
+    }
+
+    // Formato legacy ya compatible (items[] + customer + totals)
+    return raw as UberOrderDetails;
+  }
+
+  /** Convierte centavos → pesos (Uber devuelve montos en enteros × 10^2) */
+  private parseCentAmount(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'object' && value.amount !== undefined) {
+      return value.amount / 100;
+    }
+    if (typeof value === 'number') {
+      // Heurística: si el valor parece estar en centavos (> 500), dividir
+      return value > 500 ? value / 100 : value;
+    }
+    return Number(value) || 0;
+  }
+
+  /** Convierte selected_modifier_groups al formato customizations[] */
+  private mapModifierGroups(groups: any[]): any[] | undefined {
+    if (!groups?.length) return undefined;
+    return groups.map((g: any) => ({
+      id: g.id ?? '',
+      title: g.title ?? g.name ?? '',
+      selections: (g.selected_items ?? g.selections ?? []).map((s: any) => ({
+        id: s.id ?? '',
+        title: s.title ?? s.name ?? '',
+        price: this.parseCentAmount(s.price),
+      })),
+    }));
+  }
+
+  /**
+   * Acepta una orden en Uber — obligatorio dentro de 11.5 min o se auto-cancela.
+   * POST /v1/delivery/order/{order_id}/accept
+   */
+  async acceptOrder(orderId: string): Promise<void> {
+    logger.info(`Aceptando orden Uber: ${orderId}`);
+    const accessToken = await uberAuthService.getAccessToken();
+
+    try {
+      await this.axiosInstance.post(
+        `/v1/delivery/order/${orderId}/accept`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+      );
+      logger.info(`Orden ${orderId} aceptada en Uber`);
+    } catch (error: any) {
+      logger.error(`Error al aceptar orden ${orderId} en Uber`, {
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      // No lanzamos — Sierra ya creó la orden, no queremos revertir por esto
+    }
+  }
+
+  /**
+   * Rechaza una orden en Uber.
+   * POST /v1/delivery/order/{order_id}/deny
+   */
+  async denyOrder(orderId: string, reason: string = 'ITEM_ISSUE'): Promise<void> {
+    logger.info(`Rechazando orden Uber: ${orderId}`);
+    const accessToken = await uberAuthService.getAccessToken();
+
+    try {
+      await this.axiosInstance.post(
+        `/v1/delivery/order/${orderId}/deny`,
+        { deny_reason: { info: reason, type: reason } },
+        { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+      );
+      logger.info(`Orden ${orderId} rechazada en Uber`);
+    } catch (error: any) {
+      logger.error(`Error al rechazar orden ${orderId} en Uber`, {
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+    }
   }
 }
 

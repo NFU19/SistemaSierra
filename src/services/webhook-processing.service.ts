@@ -82,6 +82,10 @@ class WebhookProcessingService {
       logger.debug('Paso 3: Creando orden en Sierra...');
       const sierraResponse = await sierraIntegrationService.createOrder(sierraOrderTicket);
 
+      // Paso 4: Confirmar la orden en Uber (obligatorio dentro de 11.5 min)
+      logger.debug('Paso 4: Aceptando orden en Uber...');
+      await uberOrderService.acceptOrder(uberOrderId);
+
       const processingTime = Date.now() - startTime;
 
       const logMessage = obtenerDetallesFallo 
