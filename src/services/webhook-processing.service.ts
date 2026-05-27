@@ -67,6 +67,18 @@ class WebhookProcessingService {
       logger.debug('Paso 2: Mapeando orden a formato Sierra...');
       const sierraOrderTicket = orderMapperService.mapUberOrderToSierraTicket(uberOrderDetails);
 
+      // Si fallaron los detalles y no hay PLUs, no podemos crear una orden vacía en Sierra
+      if (obtenerDetallesFallo && sierraOrderTicket.plus.length === 0) {
+        logger.warn(`Orden ${uberOrderId} recibida sin items — no se envía a Sierra. Requiere revisión manual.`);
+        eventService.emitOrderError(uberOrderId, new Error(`Orden recibida de Uber pero sin items disponibles (order fetch falló). Revisar manualmente en Uber Eats Manager.`));
+        return {
+          success: false,
+          message: 'Orden recibida sin detalles — revisión manual requerida',
+          uberOrderId,
+          error: 'No se pudieron obtener los items de la orden de Uber',
+        };
+      }
+
       // Paso 3: Crear orden en Sierra
       logger.debug('Paso 3: Creando orden en Sierra...');
       const sierraResponse = await sierraIntegrationService.createOrder(sierraOrderTicket);
