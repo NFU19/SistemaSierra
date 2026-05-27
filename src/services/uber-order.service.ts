@@ -31,7 +31,7 @@ class UberOrderService {
       const accessToken = await uberAuthService.getAccessToken();
 
       const response = await this.axiosInstance.get<UberOrderDetails>(
-        `/v2/orders/${orderId}`,
+        `/v1/eats/orders/${orderId}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
