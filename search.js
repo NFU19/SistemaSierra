@@ -1,0 +1,1 @@
+fetch("https://html.duckduckgo.com/html/?q=site:developer.uber.com+sandbox-auth.uber.com+OR+sandbox-login.uber.com").then(r => r.text()).then(t => { const doc = t.match(/class="result__snippet"(.*?)<\/a>/g); if(doc) console.log(doc.map(x=>x.replace(/<[^>]+>/g, " ")).join("\n---\n")); process.exit(0); })

@@ -9,7 +9,8 @@ import { UberOrderDetails } from '../interfaces/uber.interface';
 
 class UberOrderService {
   private axiosInstance: AxiosInstance;
-  private baseUrl = 'https://api.uber.com';
+  // Usamos el entorno Test de Uber Eats para las llamadas a la API
+  private baseUrl = 'https://test-api.uber.com';
 
   constructor() {
     this.axiosInstance = axios.create({
