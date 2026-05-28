@@ -1,5 +1,7 @@
 /**
- * Configuracion Express compartida
+ * Configuración de la aplicación Express
+ * Define middlewares, rutas y manejo de errores.
+ * Exportada como módulo: usada por src/index.ts (servidor local) y api/index.ts (Vercel).
  */
 
 import express, { Express, Request, Response } from 'express';
@@ -11,6 +13,8 @@ import { webhookRoutes } from './routes/webhook.routes';
 validateConfig();
 
 const app: Express = express();
+// Ocultar cabecera X-Powered-By para no exponer el framework
+app.disable('x-powered-by');
 
 // ============================================================================
 // MIDDLEWARES GLOBALES

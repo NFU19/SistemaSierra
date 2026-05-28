@@ -6,7 +6,7 @@ export interface UberWebhookPayload {
   event_id: string;
   event_time?: number;
   timestamp?: number;
-  event_type: 'orders.notification' | 'order.created' | 'order.updated' | 'order.cancelled' | string;
+  event_type: 'orders.notification' | 'order.created' | 'order.updated' | 'order.cancelled' | (string & {});
   order_id?: string; // Formato orders.notification (root-level)
   type?: string;     // Formato orders.notification (NEW, CANCELLED, etc.)
   meta?: {
@@ -22,7 +22,7 @@ export interface UberOrderEvent {
   order_id: string;
   store_id: string;
   timestamp: number;
-  platform: 'eats' | string;
+  platform: 'eats' | (string & {});
 }
 
 export interface UberOrderDetails {

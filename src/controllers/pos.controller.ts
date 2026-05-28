@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Controlador para la Interfaz de POS
  * Sirve la UI y maneja Server-Sent Events para actualizaciones en tiempo real
  */
@@ -387,7 +387,7 @@ class POSController {
 <body>
     <div class="container">
         <header>
-            <h1>🏪 POS - Sistema Sierra</h1>
+            <h1> POS - Sistema Sierra</h1>
             <div class="status">
                 <span class="status-indicator connected" id="status-indicator"></span>
                 <span id="status-text">Conectado</span>
@@ -415,7 +415,7 @@ class POSController {
 
         <div class="orders-container" id="orders-container">
             <div class="empty-state">
-                <h2>👀 Esperando órdenes...</h2>
+                <h2> Esperando órdenes...</h2>
                 <p>Las órdenes de Uber Eats aparecerán aquí en tiempo real</p>
             </div>
         </div>
@@ -506,7 +506,7 @@ class POSController {
                         </div>
                         \${order.orderData.observation ? \`
                             <div class="order-customer">
-                                <strong>📍 Notas:</strong> \${order.orderData.observation}
+                                <strong> Notas:</strong> \${order.orderData.observation}
                             </div>
                         \` : ''}
                     \` : ''}
@@ -523,7 +523,7 @@ class POSController {
             if (orders.length === 0) {
                 ordersContainer.innerHTML = \`
                     <div class="empty-state">
-                        <h2>👀 Esperando órdenes...</h2>
+                        <h2> Esperando órdenes...</h2>
                         <p>Las órdenes de Uber Eats aparecerán aquí en tiempo real</p>
                     </div>
                 \`;

@@ -3,7 +3,7 @@
  * Permite que múltiples clientes reciban actualizaciones en tiempo real
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { OrderTicket } from '../interfaces/sierra.interface';
 
 interface ProcessedOrder {
@@ -58,7 +58,8 @@ class EventService extends EventEmitter {
   }
 
   /**
-   * Limpia el historial
+   * Limpia el historial de órdenes.
+   * Sin uso actual — disponible para endpoints de administración futuros.
    */
   clearHistory(): void {
     this.processedOrders = [];

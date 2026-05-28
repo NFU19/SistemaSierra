@@ -33,7 +33,6 @@ interface SierraCategoryMapping {
 interface CategoryBuildResult {
   sections: Map<string, SierraCategoryMapping>;
   uncategorizedItems: SierraPluItem[];
-  uncategorizedModifiers: SierraPluItem[];
 }
 
 interface GeneralCategoryBucket {
@@ -41,6 +40,7 @@ interface GeneralCategoryBucket {
   items: any[];
 }
 
+// Agrupación de subcategorías de Sierra en categorías genéricas de Uber Eats
 const GENERAL_CATEGORY_DEFINITIONS: Record<string, string[]> = {
   BEBIDAS: [
     'REFRESCOS',
@@ -70,6 +70,7 @@ const GENERAL_CATEGORY_DEFINITIONS: Record<string, string[]> = {
   ENTRADAS: ['CHILES', 'JUGOS', 'PENCA NOPAL', 'BARRA DE SALSAS'],
 };
 
+// Qué categorías de modificadores aplican a cada categoría de producto
 const MODIFIER_CATEGORY_TARGETS: Record<string, string[]> = {
   'MODIFICADORES TACOS': ['TACOS MAIZ', 'TACOS HARINA'],
   'MODIFICADOR QUESADILLA': ['QUESADILLAS MAIZ', 'QUESADILLAS HARINAS'],
@@ -78,12 +79,14 @@ const MODIFIER_CATEGORY_TARGETS: Record<string, string[]> = {
   JARABES: ['POSTRES'],
 };
 
+// Categorías de modificadores que se ignoran al construir el menú
 const IGNORED_MODIFIER_CATEGORIES = new Set(['MODIFICADORES']);
 
+// Categorías que se pasan directamente sin reagrupar en GENERAL_CATEGORY_DEFINITIONS
 const PASSTHROUGH_CATEGORIES = new Set(['PARRILLADAS', 'SOPAS', 'POSTRES']);
 
 class UberMenuService {
-  private axiosInstance: AxiosInstance;
+  private readonly axiosInstance: AxiosInstance;
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -257,7 +260,7 @@ class UberMenuService {
     const categoryIds = categories.map((category) => category.id);
 
     const payload: UberMenuPayload = {
-      items: allItems as any[],
+      items: allItems,
       modifier_groups: modifierGroups,
       categories,
       menus: [
@@ -288,7 +291,7 @@ class UberMenuService {
   private mapPluToItem(
     item: SierraPluItem,
     modifierGroupIds?: string[] | null
-  ): any | null {
+  ): any {
     if (!item.id) {
       return null;
     }
@@ -381,7 +384,7 @@ class UberMenuService {
       return null;
     }
 
-    const parsed = typeof value === 'string' ? parseFloat(value) : value;
+    const parsed = typeof value === 'string' ? Number.parseFloat(value) : value;
     if (!Number.isFinite(parsed)) {
       return null;
     }
@@ -394,7 +397,7 @@ class UberMenuService {
       return null;
     }
 
-    const parsed = typeof value === 'string' ? parseFloat(value) : value;
+    const parsed = typeof value === 'string' ? Number.parseFloat(value) : value;
     if (!Number.isFinite(parsed)) {
       return null;
     }
@@ -430,71 +433,63 @@ class UberMenuService {
     plusCatalog: SierraPluItem[],
     stockMap: Map<string, SierraPluStockData>
   ): CategoryBuildResult {
-    const map = new Map<string, SierraCategoryMapping>();
+    const sections = new Map<string, SierraCategoryMapping>();
     const uncategorizedItems: SierraPluItem[] = [];
-    const uncategorizedModifiers: SierraPluItem[] = [];
-    let currentCategoryName: string | null = null;
-    let currentCategoryKey: string | null = null;
+    let currentKey: string | null = null;
 
-    plusCatalog.forEach((item) => {
+    for (const item of plusCatalog) {
       if (item.category === true) {
-        currentCategoryName = this.getCategoryLabel(item);
-        if (!currentCategoryName) {
-          currentCategoryKey = null;
-          return;
-        }
-
-        currentCategoryKey = this.normalizeCategoryName(currentCategoryName);
-
-        if (!map.has(currentCategoryKey)) {
-          map.set(currentCategoryKey, {
-            name: currentCategoryName,
-            items: [],
-            modifiers: [],
-          });
-        }
-
-        return;
+        currentKey = this.registerCategoryHeader(item, sections);
+      } else {
+        this.classifyCatalogItem(item, stockMap, sections, currentKey, uncategorizedItems);
       }
+    }
 
-      const isIgnoredModifierSection =
-        currentCategoryKey && IGNORED_MODIFIER_CATEGORIES.has(currentCategoryKey);
+    return { sections, uncategorizedItems };
+  }
 
-      if (isIgnoredModifierSection) {
-        return;
+  /** Registra un encabezado de categoría del catálogo y retorna su clave normalizada */
+  private registerCategoryHeader(
+    item: SierraPluItem,
+    sections: Map<string, SierraCategoryMapping>
+  ): string | null {
+    const name = this.getCategoryLabel(item);
+    if (!name) return null;
+
+    const key = this.normalizeCategoryName(name);
+    if (!sections.has(key)) {
+      sections.set(key, { name, items: [], modifiers: [] });
+    }
+    return key;
+  }
+
+  /** Clasifica un item del catálogo en su sección correspondiente (item o modificador) */
+  private classifyCatalogItem(
+    item: SierraPluItem,
+    stockMap: Map<string, SierraPluStockData>,
+    sections: Map<string, SierraCategoryMapping>,
+    currentKey: string | null,
+    uncategorizedItems: SierraPluItem[]
+  ): void {
+    if (currentKey && IGNORED_MODIFIER_CATEGORIES.has(currentKey)) return;
+    if (this.isSoldOut(item, stockMap)) return;
+
+    const isModifierSection = currentKey && this.isModifierCategory(currentKey);
+    if (isModifierSection || this.isModifier(item)) {
+      if (currentKey && sections.has(currentKey)) {
+        sections.get(currentKey)?.modifiers.push(item);
       }
+      // Modificadores sin sección asignada se descartan (no aplican a Uber)
+      return;
+    }
 
-      if (this.isSoldOut(item, stockMap)) {
-        return;
+    if (this.isMenuItem(item)) {
+      if (currentKey && sections.has(currentKey)) {
+        sections.get(currentKey)?.items.push(item);
+      } else {
+        uncategorizedItems.push(item);
       }
-
-      const isModifierSection =
-        currentCategoryKey && this.isModifierCategory(currentCategoryKey);
-
-      if (isModifierSection || this.isModifier(item)) {
-        if (currentCategoryKey && map.has(currentCategoryKey)) {
-          map.get(currentCategoryKey)?.modifiers.push(item);
-        } else {
-          uncategorizedModifiers.push(item);
-        }
-
-        return;
-      }
-
-      if (this.isMenuItem(item)) {
-        if (currentCategoryKey && map.has(currentCategoryKey)) {
-          map.get(currentCategoryKey)?.items.push(item);
-        } else {
-          uncategorizedItems.push(item);
-        }
-      }
-    });
-
-    return {
-      sections: map,
-      uncategorizedItems,
-      uncategorizedModifiers,
-    };
+    }
   }
 
   private buildStockMap(stockItems: SierraPluStockData[]): Map<string, SierraPluStockData> {
@@ -604,7 +599,7 @@ class UberMenuService {
 
     items.forEach((item) => {
       const mappedItem = this.mapPluToItem(item);
-      if (!mappedItem || !mappedItem.id || seen.has(mappedItem.id)) {
+      if (!mappedItem?.id || seen.has(mappedItem.id)) {
         return;
       }
 
@@ -620,7 +615,7 @@ class UberMenuService {
     const deduped: any[] = [];
 
     items.forEach((item) => {
-      if (!item || !item.id || seen.has(item.id)) {
+      if (!item?.id || seen.has(item.id)) {
         return;
       }
 

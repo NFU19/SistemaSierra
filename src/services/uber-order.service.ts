@@ -9,8 +9,8 @@ import { uberAuthService } from './uber-auth.service';
 import { UberOrderDetails } from '../interfaces/uber.interface';
 
 class UberOrderService {
-  private axiosInstance: AxiosInstance;
-  private baseUrl = 'https://test-api.uber.com';
+  private readonly axiosInstance: AxiosInstance;
+  private readonly baseUrl = 'https://test-api.uber.com';
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -205,6 +205,7 @@ class UberOrderService {
   /**
    * Rechaza una orden en Uber.
    * POST /v1/delivery/order/{order_id}/deny
+   * Sin uso actual — disponible para flujos de cancelación futuros.
    */
   async denyOrder(orderId: string, reason: string = 'ITEM_ISSUE'): Promise<void> {
     logger.info(`Rechazando orden Uber: ${orderId}`);

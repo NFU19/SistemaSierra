@@ -84,8 +84,8 @@ class OrderMapperService {
    * @returns Código PLU
    */
   private mapUberItemIdToPlus(uberItemId: string, itemTitle: string): string {
-    // TODO: Implementar tabla de mapeo entre catálogos
-    // Por ahora, usamos una estrategia simple: prefijo + ID de Uber
+    // Mapeo directo por ID: el ID de Uber se usa como PLU en Sierra.
+    // Implementar tabla de equivalencias real cuando se disponga del catalogo final.
     logger.debug(`Mapeando Uber item ${uberItemId} (${itemTitle}) a PLU`);
 
     // Ejemplo: si Uber item es "12345", PLU sería "UE12345"
@@ -128,9 +128,9 @@ class OrderMapperService {
     }
 
     observations.push(
-      `Cliente: ${uberOrder.customer.first_name} ${uberOrder.customer.last_name}`
+      `Cliente: ${uberOrder.customer.first_name} ${uberOrder.customer.last_name}`,
+      `Teléfono: ${uberOrder.customer.phone_number}`
     );
-    observations.push(`Teléfono: ${uberOrder.customer.phone_number}`);
 
     return observations.join(' | ');
   }

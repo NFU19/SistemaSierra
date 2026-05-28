@@ -204,16 +204,15 @@ class WebhookProcessingService {
   }
 
   /**
-   * Valida que el webhook provenga de Uber (validación de firma)
-   * TODO: Implementar validación de firma HMAC
+   * Valida que el webhook provenga de Uber (validación de firma).
+   * Pendiente: implementar HMAC-SHA256 con WEBHOOK_SIGNATURE_SECRET.
    * @param signature Firma del webhook
    * @param payload Payload del webhook
    * @returns true si la firma es válida
    */
   validateWebhookSignature(_signature: string, _payload: any): boolean {
-    // TODO: Implementar validación HMAC-SHA256 con WEBHOOK_SIGNATURE_SECRET
+    // Placeholder: siempre retorna true. Implementar HMAC-SHA256 en producción.
     logger.debug('Validando firma de webhook (función placeholder)');
-    // Por ahora, siempre retorna true. En producción, validar con HMAC
     return true;
   }
 }

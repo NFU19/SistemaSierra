@@ -15,7 +15,7 @@ class UberWebhookController {
   async handleOrderWebhook(req: Request, res: Response): Promise<void> {
     try {
       // Log siempre en INFO para poder ver si Uber está enviando webhooks en producción
-      logger.info('📥 Webhook recibido', {
+      logger.info('Webhook recibido', {
         event_type: req.body?.event_type,
         event_id: req.body?.event_id,
         order_id: req.body?.order_id || req.body?.meta?.resource_id || req.body?.data?.order_id,
@@ -39,7 +39,7 @@ class UberWebhookController {
         return;
       }
 
-      const webhook = req.body as UberWebhookPayload;
+      const webhook = req.body;
 
       // Validar la firma del webhook (si está disponible)
       const signature = req.headers['x-uber-signature'] as string;

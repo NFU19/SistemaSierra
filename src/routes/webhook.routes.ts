@@ -1,5 +1,12 @@
 /**
  * Rutas para webhooks y endpoints de Uber
+ *
+ * Controladores registrados:
+ *   - UberWebhookController  → recepción de órdenes y health check
+ *   - POSController          → interfaz web y stream SSE de órdenes
+ *
+ * Pendiente de exponer:
+ *   - UberMenuController (uber-menu.controller.ts) → POST /api/uber/menus/sync
  */
 
 import { Router } from 'express';

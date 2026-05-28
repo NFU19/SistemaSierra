@@ -9,7 +9,7 @@ import { logger } from '../utils/logger';
 import { UberOAuthTokenResponse } from '../interfaces/uber.interface';
 
 class UberAuthService {
-  private axiosInstance: AxiosInstance;
+  private readonly axiosInstance: AxiosInstance;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
 

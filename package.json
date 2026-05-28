@@ -4,7 +4,7 @@
   "description": "Middleware para integración de Uber Eats con Sistemas Sierra POS",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node src/index.ts",
+    "dev": "nodemon --exec ts-node src/index.ts --ext ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "watch": "tsc --watch"

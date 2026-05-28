@@ -9,7 +9,7 @@ import { logger } from '../utils/logger';
 import { OrderTicket, SierraApiResponse, SierraOrderResponse } from '../interfaces/sierra.interface';
 
 class SierraIntegrationService {
-  private axiosInstance: AxiosInstance;
+  private readonly axiosInstance: AxiosInstance;
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -90,9 +90,10 @@ class SierraIntegrationService {
   }
 
   /**
-   * Obtiene el estado de una orden en Sierra
+   * Obtiene el estado de una orden en Sierra.
    * @param orderId ID de la orden
    * @returns Datos de la orden
+   * Sin uso actual — disponible para consultas de estado futuras.
    */
   async getOrderStatus(orderId: string): Promise<any> {
     try {

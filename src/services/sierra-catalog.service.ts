@@ -9,7 +9,7 @@ import { logger } from '../utils/logger';
 import { SierraPluItem, SierraPluStockData } from '../interfaces/sierra.interface';
 
 class SierraCatalogService {
-  private axiosInstance: AxiosInstance;
+  private readonly axiosInstance: AxiosInstance;
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -29,7 +29,7 @@ class SierraCatalogService {
       const response = await this.axiosInstance.get<SierraPluItem[]>('/api/v1/plus');
 
       if (!Array.isArray(response.data)) {
-        throw new Error('Respuesta invalida de catalogo Sierra');
+        throw new TypeError('Respuesta invalida de catalogo Sierra');
       }
 
       logger.info('Catalogo Sierra obtenido', { count: response.data.length });
@@ -55,7 +55,7 @@ class SierraCatalogService {
       );
 
       if (!Array.isArray(response.data)) {
-        throw new Error('Respuesta invalida de categoria Sierra');
+        throw new TypeError('Respuesta invalida de categoria Sierra');
       }
 
       return response.data;
@@ -70,7 +70,7 @@ class SierraCatalogService {
       const response = await this.axiosInstance.get<SierraPluStockData[]>('/api/v1/plus/stock');
 
       if (!Array.isArray(response.data)) {
-        throw new Error('Respuesta invalida de stock Sierra');
+        throw new TypeError('Respuesta invalida de stock Sierra');
       }
 
       return response.data;
@@ -85,7 +85,7 @@ class SierraCatalogService {
       const response = await this.axiosInstance.get<SierraPluItem[]>(endpoint);
 
       if (!Array.isArray(response.data)) {
-        throw new Error('Respuesta invalida de categorias Sierra');
+        throw new TypeError('Respuesta invalida de categorias Sierra');
       }
 
       return response.data

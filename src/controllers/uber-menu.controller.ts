@@ -14,7 +14,7 @@ class UberMenuController {
    */
   async syncMenu(req: Request, res: Response): Promise<void> {
     try {
-      const dryRun = String(req.query.dryRun || '').toLowerCase() === 'true';
+      const dryRun = req.query.dryRun === 'true';
 
       const result = await uberMenuService.syncMenu(dryRun);
 

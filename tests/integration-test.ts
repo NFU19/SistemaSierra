@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Script de prueba para verificar la integración Uber ↔ Sierra
  * Simula un webhook de Uber y verifica el flujo completo
  * 
@@ -32,11 +32,11 @@ async function runTest(
     results.push({
       name,
       passed: result !== false,
-      message: '✓ Pasó',
+      message: ' Pasó',
       duration,
     });
 
-    console.log(`  ✓ Completado en ${duration}ms`);
+    console.log(`   Completado en ${duration}ms`);
   } catch (error: any) {
     const duration = Date.now() - startTime;
     results.push({
@@ -46,7 +46,7 @@ async function runTest(
       duration,
     });
 
-    console.error(`  ✗ Error: ${error.message}`);
+    console.error(`   Error: ${error.message}`);
   }
 }
 
@@ -139,7 +139,7 @@ async function testInvalidWebhook(): Promise<boolean> {
     throw new Error('Debería rechazar payload inválido');
   } catch (error: any) {
     if (error.response?.status === 400) {
-      console.log('  ✓ Rechazó correctamente el payload inválido');
+      console.log('   Rechazó correctamente el payload inválido');
       return true;
     }
     throw error;
@@ -155,7 +155,7 @@ async function test404Handling(): Promise<boolean> {
     throw new Error('Debería retornar 404');
   } catch (error: any) {
     if (error.response?.status === 404) {
-      console.log('  ✓ Retornó 404 correctamente');
+      console.log('   Retornó 404 correctamente');
       return true;
     }
     throw error;
@@ -167,7 +167,7 @@ async function test404Handling(): Promise<boolean> {
  */
 async function runAllTests(): Promise<void> {
   console.log('\n' + '='.repeat(60));
-  console.log('🧪 PRUEBAS DE INTEGRACIÓN - Sierra Uber Eats Middleware');
+  console.log(' PRUEBAS DE INTEGRACIÓN - Sierra Uber Eats Middleware');
   console.log('='.repeat(60));
 
   console.log(`\nConectando a: ${MIDDLEWARE_URL}`);
@@ -181,7 +181,7 @@ async function runAllTests(): Promise<void> {
 
   // Resumen
   console.log('\n' + '='.repeat(60));
-  console.log('📊 RESUMEN DE PRUEBAS');
+  console.log(' RESUMEN DE PRUEBAS');
   console.log('='.repeat(60));
 
   const passed = results.filter((r) => r.passed).length;
@@ -189,7 +189,7 @@ async function runAllTests(): Promise<void> {
   const totalTime = results.reduce((acc, r) => acc + r.duration, 0);
 
   results.forEach((result) => {
-    const status = result.passed ? '✓' : '✗';
+    const status = result.passed ? '' : '';
     const time = `${result.duration}ms`.padStart(6);
     console.log(
       `${status} ${result.name.padEnd(30)} [${time}] - ${result.message}`
@@ -198,8 +198,8 @@ async function runAllTests(): Promise<void> {
 
   console.log('\n' + '-'.repeat(60));
   console.log(`Total: ${results.length} pruebas`);
-  console.log(`Pasadas: ${passed} ✓`);
-  console.log(`Fallidas: ${failed} ✗`);
+  console.log(`Pasadas: ${passed} `);
+  console.log(`Fallidas: ${failed} `);
   console.log(`Tiempo total: ${totalTime}ms`);
   console.log('='.repeat(60) + '\n');
 
@@ -208,6 +208,6 @@ async function runAllTests(): Promise<void> {
 
 // Ejecutar si se llama directamente
 runAllTests().catch((error) => {
-  console.error('\n❌ Error crítico:', error);
+  console.error('\n Error crítico:', error);
   process.exit(1);
 });
