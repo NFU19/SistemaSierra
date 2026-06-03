@@ -1,6 +1,6 @@
 /**
  * Servicio para obtener detalles de órdenes desde Uber Eats
- * Usa la Order Fulfillment API v1: GET /v1/delivery/order/{order_id}
+ * Usa la Eats Order API v2: GET /v2/eats/order/{order_id}
  */
 
 import axios, { AxiosInstance } from 'axios';
@@ -21,7 +21,7 @@ class UberOrderService {
 
   /**
    * Obtiene los detalles completos de una orden de Uber
-   * Endpoint: GET /v1/delivery/order/{order_id}?expand=carts
+   * Endpoint: GET /v2/eats/order/{order_id}
    */
   async getOrderDetails(orderId: string): Promise<UberOrderDetails> {
     logger.info(`Obteniendo detalles de orden de Uber: ${orderId}`);
@@ -29,12 +29,11 @@ class UberOrderService {
     const accessToken = await uberAuthService.getAccessToken();
 
     try {
-      logger.debug(`Intentando endpoint: /v1/delivery/order/${orderId}`);
+      logger.debug(`Intentando endpoint: /v2/eats/order/${orderId}`);
 
       const response = await this.axiosInstance.get(
-        `/v1/delivery/order/${orderId}`,
+        `/v2/eats/order/${orderId}`,
         {
-          params: { expand: 'carts' },
           headers: {
             Authorization: `Bearer ${accessToken}`,
             Accept: 'application/json',
@@ -156,43 +155,20 @@ class UberOrderService {
 
   /**
    * Acepta una orden en Uber — obligatorio dentro de 11.5 min o se auto-cancela.
-   * Intenta primero el endpoint de sandbox/POS: POST /v1/delivery/orders/{id}/accept_pos_order
-   * Si falla con 404, cae al endpoint del API reference: POST /v1/delivery/order/{id}/accept
+   * Endpoint: POST /v1/eats/orders/{order_id}/acceptOrderFulfillment
    */
   async acceptOrder(orderId: string): Promise<void> {
     logger.info(`Aceptando orden Uber: ${orderId}`);
     const accessToken = await uberAuthService.getAccessToken();
     const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
 
-    // Endpoint 1: documentación sandbox / webhook guide (plural + accept_pos_order)
     try {
       await this.axiosInstance.post(
-        `/v1/delivery/orders/${orderId}/accept_pos_order`,
+        `/v1/eats/orders/${orderId}/acceptOrderFulfillment`,
         {},
         { headers }
       );
-      logger.info(`Orden ${orderId} aceptada en Uber (accept_pos_order)`);
-      return;
-    } catch (error_: any) {
-      if (error_.response?.status !== 404) {
-        logger.error(`Error al aceptar orden ${orderId} con accept_pos_order`, {
-          status: error_.response?.status,
-          data: error_.response?.data,
-        });
-        return; // No relanzamos — Sierra ya creó la orden
-      }
-      // 404 → probar endpoint alternativo
-      logger.debug(`accept_pos_order devolvió 404, intentando /accept...`);
-    }
-
-    // Endpoint 2: Order Fulfillment API reference (singular + /accept)
-    try {
-      await this.axiosInstance.post(
-        `/v1/delivery/order/${orderId}/accept`,
-        {},
-        { headers }
-      );
-      logger.info(`Orden ${orderId} aceptada en Uber (/accept)`);
+      logger.info(`Orden ${orderId} aceptada en Uber`);
     } catch (error: any) {
       logger.error(`Error al aceptar orden ${orderId} en Uber`, {
         status: error.response?.status,
@@ -203,18 +179,18 @@ class UberOrderService {
   }
 
   /**
-   * Rechaza una orden en Uber.
-   * POST /v1/delivery/order/{order_id}/deny
+   * Rechaza/cancela una orden en Uber.
+   * POST /v1/eats/orders/{order_id}/cancelOrderFulfillment
    * Sin uso actual — disponible para flujos de cancelación futuros.
    */
-  async denyOrder(orderId: string, reason: string = 'ITEM_ISSUE'): Promise<void> {
+  async denyOrder(orderId: string, reason: string = 'ITEM_UNAVAILABLE'): Promise<void> {
     logger.info(`Rechazando orden Uber: ${orderId}`);
     const accessToken = await uberAuthService.getAccessToken();
 
     try {
       await this.axiosInstance.post(
-        `/v1/delivery/order/${orderId}/deny`,
-        { deny_reason: { info: reason, type: reason } },
+        `/v1/eats/orders/${orderId}/cancelOrderFulfillment`,
+        { reason },
         { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
       );
       logger.info(`Orden ${orderId} rechazada en Uber`);
