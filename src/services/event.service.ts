@@ -6,6 +6,30 @@
 import { EventEmitter } from 'node:events';
 import { OrderTicket } from '../interfaces/sierra.interface';
 
+interface OrderDetailItem {
+  name: string;
+  plu: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  customizations: { title: string; selections: string[] }[];
+}
+
+export interface OrderDetails {
+  orderNumber: string;
+  status: string;
+  customer: { name: string; phone: string };
+  items: OrderDetailItem[];
+  totals: {
+    subtotal: number;
+    tax: number;
+    delivery_fee: number;
+    promotion: number;
+    total: number;
+    currency: string;
+  };
+}
+
 interface ProcessedOrder {
   id: string;
   uberOrderId: string;
@@ -13,6 +37,7 @@ interface ProcessedOrder {
   status: 'processing' | 'success' | 'error';
   message: string;
   orderData?: OrderTicket;
+  details?: OrderDetails;
   errorDetails?: any;
 }
 

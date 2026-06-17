@@ -116,10 +116,11 @@ class WebhookProcessingService {
         uberOrderId,
         timestamp: new Date().toISOString(),
         status: 'success' as const,
-        message: obtenerDetallesFallo 
-          ? 'Orden creada en Sierra (detalles incompletos)' 
+        message: obtenerDetallesFallo
+          ? 'Orden creada en Sierra (detalles incompletos)'
           : 'Orden creada exitosamente en Sierra',
         orderData: sierraOrderTicket,
+        details: this.buildOrderDetails(uberOrderDetails),
       };
 
       eventService.emitOrderProcessed(successOrder);
@@ -177,6 +178,41 @@ class WebhookProcessingService {
     }
 
     throw lastError;
+  }
+
+  /**
+   * Construye los detalles legibles de la orden (con nombres de producto) para mostrar en el POS.
+   */
+  private buildOrderDetails(uber: any) {
+    const firstName = uber.customer?.first_name ?? '';
+    const lastName = uber.customer?.last_name ?? '';
+    return {
+      orderNumber: uber.order_number ?? '',
+      status: uber.status ?? '',
+      customer: {
+        name: `${firstName} ${lastName}`.trim() || 'Cliente Uber Eats',
+        phone: uber.customer?.phone_number ?? '',
+      },
+      items: (uber.items ?? []).map((i: any) => ({
+        name: i.title || i.id || 'Producto',
+        plu: String(i.id ?? ''),
+        quantity: i.quantity ?? 1,
+        unitPrice: i.unit_price ?? 0,
+        total: i.price ?? 0,
+        customizations: (i.customizations ?? []).map((c: any) => ({
+          title: c.title ?? '',
+          selections: (c.selections ?? []).map((s: any) => s.title ?? ''),
+        })),
+      })),
+      totals: uber.totals ?? {
+        subtotal: 0,
+        tax: 0,
+        delivery_fee: 0,
+        promotion: 0,
+        total: 0,
+        currency: 'MXN',
+      },
+    };
   }
 
   /**

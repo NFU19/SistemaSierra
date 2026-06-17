@@ -367,6 +367,105 @@ class POSController {
             opacity: 0.8;
         }
 
+        /* ===== Vista detallada de orden ===== */
+        .order-card.success { border-top: 4px solid #06C167; }
+        .order-card.error { border-top: 4px solid #f44336; }
+        .order-card.processing { border-top: 4px solid #f9a825; }
+
+        .order-header-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .uber-badge {
+            background: #06C167;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .order-number {
+            font-size: 18px;
+            font-weight: 800;
+            color: #111;
+        }
+
+        .order-uuid {
+            font-size: 10px;
+            color: #aaa;
+            font-family: monospace;
+            margin-top: 2px;
+        }
+
+        .item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px 0;
+            border-bottom: 1px solid #f2f2f2;
+            gap: 10px;
+        }
+        .item:last-child { border-bottom: none; }
+
+        .item-main { display: flex; align-items: flex-start; gap: 10px; flex: 1; }
+
+        .item-qty-badge {
+            background: #2a5298;
+            color: white;
+            font-weight: 700;
+            font-size: 13px;
+            min-width: 30px;
+            height: 26px;
+            padding: 0 6px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .item-info { display: flex; flex-direction: column; gap: 2px; }
+
+        .item-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #222;
+            line-height: 1.3;
+        }
+
+        .item-plu { font-size: 11px; color: #999; font-family: monospace; }
+
+        .item-mods {
+            font-size: 12px;
+            color: #e67e22;
+            background: #fff6ec;
+            padding: 3px 7px;
+            border-radius: 4px;
+            margin-top: 3px;
+            line-height: 1.3;
+        }
+
+        .item-prices { text-align: right; flex-shrink: 0; }
+        .item-price { font-weight: 700; color: #111; font-size: 14px; display: block; }
+        .item-unit { font-size: 11px; color: #aaa; display: block; }
+
+        .total-row.delivery, .total-row.promotion { color: #666; }
+        .total-row.promotion span:last-child { color: #06C167; }
+
+        .customer-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .customer-grid .row { display: flex; align-items: center; gap: 8px; }
+        .customer-grid .label { font-size: 11px; color: #888; text-transform: uppercase; min-width: 60px; }
+        .customer-grid .value { font-size: 13px; color: #333; font-weight: 600; }
+
         @media (max-width: 768px) {
             .stats {
                 grid-template-columns: repeat(2, 1fr);
@@ -431,9 +530,11 @@ class POSController {
             const total = orders.length;
             const success = orders.filter(o => o.status === 'success').length;
             const errors = orders.filter(o => o.status === 'error').length;
-            const amount = orders
-                .filter(o => o.orderData && o.orderData.subTotal)
-                .reduce((sum, o) => sum + (o.orderData?.subTotal || 0), 0);
+            const amount = orders.reduce((sum, o) => {
+                if (o.details && o.details.totals && o.details.totals.total) return sum + o.details.totals.total;
+                if (o.orderData && o.orderData.subTotal) return sum + o.orderData.subTotal;
+                return sum;
+            }, 0);
 
             document.getElementById('stat-total').textContent = total;
             document.getElementById('stat-success').textContent = success;
@@ -446,70 +547,122 @@ class POSController {
             return date.toLocaleTimeString('es-MX');
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function money(value) {
+            return '$' + (Number(value) || 0).toFixed(2);
+        }
+
         function createOrderCard(order) {
             const card = document.createElement('div');
-            card.className = 'order-card';
-
             const statusClass = order.status === 'success' ? 'success' : order.status === 'error' ? 'error' : 'processing';
             const statusText = order.status === 'success' ? 'Exitosa' : order.status === 'error' ? 'Error' : 'Procesando';
+            card.className = 'order-card ' + statusClass;
 
+            const d = order.details;
+
+            // Encabezado: número de orden + UUID
+            const orderNumber = d && d.orderNumber ? d.orderNumber : (order.uberOrderId || '').slice(0, 8);
+            const headerHTML = \`
+                <div class="order-header">
+                    <div>
+                        <div class="order-header-top">
+                            <span class="uber-badge">UBER EATS</span>
+                            <span class="order-number">#\${escapeHtml(orderNumber)}</span>
+                        </div>
+                        <div class="order-time">\${formatTime(order.timestamp)}</div>
+                        <div class="order-uuid">\${escapeHtml(order.uberOrderId || '')}</div>
+                    </div>
+                    <div class="order-status \${statusClass}">\${statusText}</div>
+                </div>
+            \`;
+
+            // Items detallados (preferir details; si no, fallback a PLUs del ticket Sierra)
             let itemsHTML = '';
-            if (order.orderData && order.orderData.plus) {
+            if (d && d.items && d.items.length) {
+                itemsHTML = d.items.map(it => {
+                    const mods = (it.customizations || [])
+                        .filter(c => c.selections && c.selections.length)
+                        .map(c => \`\${escapeHtml(c.title)}: \${c.selections.map(escapeHtml).join(', ')}\`)
+                        .join(' · ');
+                    return \`
+                        <div class="item">
+                            <div class="item-main">
+                                <span class="item-qty-badge">\${it.quantity}×</span>
+                                <div class="item-info">
+                                    <span class="item-name">\${escapeHtml(it.name)}</span>
+                                    <span class="item-plu">PLU \${escapeHtml(it.plu)}</span>
+                                    \${mods ? \`<span class="item-mods">\${mods}</span>\` : ''}
+                                </div>
+                            </div>
+                            <div class="item-prices">
+                                <span class="item-price">\${money(it.total)}</span>
+                                <span class="item-unit">\${money(it.unitPrice)} c/u</span>
+                            </div>
+                        </div>
+                    \`;
+                }).join('');
+            } else if (order.orderData && order.orderData.plus) {
                 itemsHTML = order.orderData.plus.map(item => \`
                     <div class="item">
-                        <span class="item-name">\${item.plu || 'Item'}</span>
-                        <span class="item-qty">x\${item.quantity}</span>
-                        <span class="item-price">$\${item.subTotal.toFixed(2)}</span>
+                        <div class="item-main">
+                            <span class="item-qty-badge">\${item.quantity}×</span>
+                            <div class="item-info"><span class="item-name">PLU \${escapeHtml(item.plu)}</span></div>
+                        </div>
+                        <div class="item-prices"><span class="item-price">\${money(item.subTotal)}</span></div>
                     </div>
                 \`).join('');
             }
 
+            // Totales (usa el desglose de Uber si está disponible)
+            const t = d && d.totals ? d.totals : null;
+            const subtotal = t ? t.subtotal : (order.orderData ? order.orderData.subTotal : 0);
+            const tax = t ? t.tax : (order.orderData ? order.orderData.tax : 0);
+            const deliveryFee = t ? t.delivery_fee : 0;
+            const promotion = t ? t.promotion : 0;
+            const total = t && t.total ? t.total : (subtotal + tax);
+
             let totalsHTML = '';
-            if (order.orderData) {
+            if (itemsHTML) {
                 totalsHTML = \`
-                    <div class="total-row subtotal">
-                        <span>Subtotal:</span>
-                        <span>$\${(order.orderData.subTotal || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="total-row tax">
-                        <span>Impuesto:</span>
-                        <span>$\${(order.orderData.tax || 0).toFixed(2)}</span>
-                    </div>
-                    <div class="total-row total">
-                        <span>Total:</span>
-                        <span>$\${((order.orderData.subTotal || 0) + (order.orderData.tax || 0)).toFixed(2)}</span>
-                    </div>
+                    <div class="total-row subtotal"><span>Subtotal</span><span>\${money(subtotal)}</span></div>
+                    \${deliveryFee ? \`<div class="total-row delivery"><span>Envío</span><span>\${money(deliveryFee)}</span></div>\` : ''}
+                    \${promotion ? \`<div class="total-row promotion"><span>Promoción</span><span>-\${money(promotion)}</span></div>\` : ''}
+                    <div class="total-row tax"><span>Impuesto</span><span>\${money(tax)}</span></div>
+                    <div class="total-row total"><span>Total</span><span>\${money(total)}</span></div>
                 \`;
             }
 
-            let errorHTML = '';
-            if (order.status === 'error') {
-                errorHTML = \`<div class="error-detail">\${order.message}</div>\`;
+            // Cliente
+            let customerHTML = '';
+            if (d && d.customer && (d.customer.name || d.customer.phone)) {
+                customerHTML = \`
+                    <div class="order-customer">
+                        <div class="customer-grid">
+                            <div class="row"><span class="label">Cliente</span><span class="value">\${escapeHtml(d.customer.name)}</span></div>
+                            \${d.customer.phone ? \`<div class="row"><span class="label">Teléfono</span><span class="value">\${escapeHtml(d.customer.phone)}</span></div>\` : ''}
+                        </div>
+                    </div>
+                \`;
+            } else if (order.orderData && order.orderData.observation) {
+                customerHTML = \`<div class="order-customer"><strong>Notas:</strong> \${escapeHtml(order.orderData.observation)}</div>\`;
             }
 
-            card.innerHTML = \`
-                <div class="order-header">
-                    <div>
-                        <div class="order-id">Orden: \${order.uberOrderId}</div>
-                        <div class="order-time">\${formatTime(order.timestamp)}</div>
-                    </div>
-                    <div class="order-status \${statusClass}">\${statusText}</div>
-                </div>
+            const errorHTML = order.status === 'error'
+                ? \`<div class="error-detail">\${escapeHtml(order.message)}</div>\`
+                : '';
+
+            card.innerHTML = headerHTML + \`
                 <div class="order-body">
-                    \${order.orderData ? \`
-                        <div class="order-items">
-                            <h4>Items</h4>
-                            \${itemsHTML}
-                        </div>
-                        <div class="order-totals">
-                            \${totalsHTML}
-                        </div>
-                        \${order.orderData.observation ? \`
-                            <div class="order-customer">
-                                <strong> Notas:</strong> \${order.orderData.observation}
-                            </div>
-                        \` : ''}
-                    \` : ''}
+                    \${itemsHTML ? \`<div class="order-items"><h4>Productos</h4>\${itemsHTML}</div>\` : ''}
+                    \${totalsHTML ? \`<div class="order-totals">\${totalsHTML}</div>\` : ''}
+                    \${customerHTML}
                     \${errorHTML}
                 </div>
             \`;
