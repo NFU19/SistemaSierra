@@ -15,10 +15,21 @@ export const config = {
   uber: {
     clientId: process.env.UBER_CLIENT_ID || '',
     clientSecret: process.env.UBER_CLIENT_SECRET || '',
-    authUrl: process.env.UBER_AUTH_URL || 'https://auth.uber.com/oauth/v2/token',    apiBaseUrl: process.env.UBER_API_BASE_URL || 'https://test-api.uber.com',
+    authUrl: process.env.UBER_AUTH_URL || 'https://auth.uber.com/oauth/v2/token',
+    apiBaseUrl: process.env.UBER_API_BASE_URL || 'https://test-api.uber.com',
     storeId: process.env.UBER_STORE_ID || '',
     storeName: process.env.UBER_STORE_NAME || '',
-    menuPath: process.env.UBER_MENU_PATH || '',  },
+    menuPath: process.env.UBER_MENU_PATH || '',
+    // Scopes solicitados al obtener el token client_credentials.
+    // Incluye los de tienda (eats.store / eats.store.status.write) para poner la tienda online.
+    scopes:
+      process.env.UBER_SCOPES ||
+      'eats.order eats.store.orders.read eats.store eats.store.status.write',
+    // Poner la tienda ONLINE automáticamente al arrancar el servidor
+    setOnlineOnStartup: process.env.UBER_SET_ONLINE_ON_STARTUP !== 'false',
+    // Rechazar automáticamente órdenes que no se pueden cumplir (sin items/PLU) en lugar de dejarlas vencer
+    autoDenyUnfulfillable: process.env.UBER_AUTO_DENY_UNFULFILLABLE === 'true',
+  },
 
   // Sistemas Sierra
   sierra: {

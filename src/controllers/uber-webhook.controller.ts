@@ -42,8 +42,10 @@ class UberWebhookController {
       const webhook = req.body;
 
       // Validar la firma del webhook (si está disponible)
+      // Se usa el cuerpo CRUDO (rawBody) capturado en app.ts, no req.body ya parseado
       const signature = req.headers['x-uber-signature'] as string;
-      if (signature && !webhookProcessingService.validateWebhookSignature(signature, req.body)) {
+      const rawBody = (req as any).rawBody as Buffer | undefined;
+      if (signature && !webhookProcessingService.validateWebhookSignature(signature, rawBody)) {
         logger.warn('Firma de webhook inválida');
         res.status(401).json({
           success: false,

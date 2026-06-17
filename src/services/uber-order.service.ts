@@ -155,7 +155,7 @@ class UberOrderService {
 
   /**
    * Acepta una orden en Uber — obligatorio dentro de 11.5 min o se auto-cancela.
-   * Endpoint: POST /v1/eats/orders/{order_id}/acceptOrderFulfillment
+   * Endpoint POS Marketplace: POST /v1/eats/orders/{order_id}/accept_pos_order
    */
   async acceptOrder(orderId: string): Promise<void> {
     logger.info(`Aceptando orden Uber: ${orderId}`);
@@ -164,7 +164,7 @@ class UberOrderService {
 
     try {
       await this.axiosInstance.post(
-        `/v1/eats/orders/${orderId}/acceptOrderFulfillment`,
+        `/v1/eats/orders/${orderId}/accept_pos_order`,
         {},
         { headers }
       );
@@ -179,9 +179,9 @@ class UberOrderService {
   }
 
   /**
-   * Rechaza/cancela una orden en Uber.
-   * POST /v1/eats/orders/{order_id}/cancelOrderFulfillment
-   * Sin uso actual — disponible para flujos de cancelación futuros.
+   * Rechaza una orden en Uber.
+   * Endpoint POS Marketplace: POST /v1/eats/orders/{order_id}/deny_pos_order
+   * Sin uso actual — disponible para flujos de rechazo futuros.
    */
   async denyOrder(orderId: string, reason: string = 'ITEM_UNAVAILABLE'): Promise<void> {
     logger.info(`Rechazando orden Uber: ${orderId}`);
@@ -189,7 +189,7 @@ class UberOrderService {
 
     try {
       await this.axiosInstance.post(
-        `/v1/eats/orders/${orderId}/cancelOrderFulfillment`,
+        `/v1/eats/orders/${orderId}/deny_pos_order`,
         { reason },
         { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
       );

@@ -20,8 +20,17 @@ app.disable('x-powered-by');
 // MIDDLEWARES GLOBALES
 // ============================================================================
 
-// Body parser para JSON
-app.use(express.json({ limit: '10mb' }));
+// Body parser para JSON.
+// Capturamos el cuerpo crudo (rawBody) para poder validar la firma HMAC de Uber:
+// el HMAC se calcula sobre los bytes exactos recibidos, no sobre el JSON re-serializado.
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req: Request, _res, buf) => {
+      (req as any).rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Middleware de logging de requests

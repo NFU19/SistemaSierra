@@ -3,12 +3,17 @@
  * Coordina el flujo completo: recepción → mapeo → envío a Sierra
  */
 
+import crypto from 'node:crypto';
 import { UberWebhookPayload } from '../interfaces/uber.interface';
+import { config } from '../config/config';
 import { logger } from '../utils/logger';
 import { uberOrderService } from './uber-order.service';
 import { orderMapperService } from './order-mapper.service';
 import { sierraIntegrationService } from './sierra-integration.service';
 import { eventService } from './event.service';
+
+// Valores placeholder que indican que el secret aún no se ha configurado de verdad
+const PLACEHOLDER_SECRETS = new Set(['default-secret', 'your-webhook-secret-key', '']);
 
 interface ProcessingResult {
   success: boolean;
@@ -69,6 +74,13 @@ class WebhookProcessingService {
       // Si fallaron los detalles y no hay PLUs, no podemos crear una orden vacía en Sierra
       if (obtenerDetallesFallo && sierraOrderTicket.plus.length === 0) {
         logger.warn(`Orden ${uberOrderId} recibida sin items — no se envía a Sierra. Requiere revisión manual.`);
+
+        // Opcional: rechazar en Uber para no dejar la orden vencer por timeout (penaliza la tienda)
+        if (config.uber.autoDenyUnfulfillable) {
+          logger.warn(`Auto-deny activado: rechazando orden ${uberOrderId} en Uber (sin items disponibles)`);
+          await uberOrderService.denyOrder(uberOrderId, 'ITEM_UNAVAILABLE');
+        }
+
         eventService.emitOrderError(uberOrderId, new Error(`Orden recibida de Uber pero sin items disponibles (order fetch falló). Revisar manualmente en Uber Eats Manager.`));
         return {
           success: false,
@@ -204,16 +216,51 @@ class WebhookProcessingService {
   }
 
   /**
-   * Valida que el webhook provenga de Uber (validación de firma).
-   * Pendiente: implementar HMAC-SHA256 con WEBHOOK_SIGNATURE_SECRET.
-   * @param signature Firma del webhook
-   * @param payload Payload del webhook
-   * @returns true si la firma es válida
+   * Valida que el webhook provenga de Uber.
+   * Uber firma cada webhook con HMAC-SHA256 sobre el cuerpo CRUDO del request,
+   * usando el Signing Key (configurado en WEBHOOK_SIGNATURE_SECRET) como clave.
+   * El resultado va en el header X-Uber-Signature en hex minúsculas.
+   *
+   * Comportamiento seguro: si el secret aún no se configura (placeholder), NO bloquea
+   * — solo advierte. Así no se pierden webhooks durante la fase de pruebas.
+   *
+   * @param signature Valor del header X-Uber-Signature
+   * @param rawBody Cuerpo crudo del request (Buffer) — NO el objeto ya parseado
+   * @returns true si la firma es válida (o si la validación está desactivada)
    */
-  validateWebhookSignature(_signature: string, _payload: any): boolean {
-    // Placeholder: siempre retorna true. Implementar HMAC-SHA256 en producción.
-    logger.debug('Validando firma de webhook (función placeholder)');
-    return true;
+  validateWebhookSignature(signature: string, rawBody: Buffer | string | undefined): boolean {
+    const secret = config.webhook.signatureSecret;
+
+    // Sin secret real configurado → no enforzar (modo pruebas)
+    if (PLACEHOLDER_SECRETS.has(secret)) {
+      logger.warn(
+        'WEBHOOK_SIGNATURE_SECRET no configurado — se omite validación de firma. ' +
+          'Configúralo con el "Signing Key" del dashboard de Uber para activar la verificación.'
+      );
+      return true;
+    }
+
+    if (!rawBody) {
+      logger.warn('No se pudo validar la firma: cuerpo crudo (rawBody) no disponible');
+      return false;
+    }
+
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    const provided = (signature || '').toLowerCase();
+
+    // Comparación en tiempo constante; requiere buffers de igual longitud
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const providedBuf = Buffer.from(provided, 'utf8');
+    if (expectedBuf.length !== providedBuf.length) {
+      logger.warn('Firma de webhook con longitud inesperada — rechazada');
+      return false;
+    }
+
+    const valid = crypto.timingSafeEqual(expectedBuf, providedBuf);
+    if (!valid) {
+      logger.warn('Firma de webhook no coincide con el HMAC esperado');
+    }
+    return valid;
   }
 }
 
