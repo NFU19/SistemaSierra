@@ -58,7 +58,7 @@ class WebhookProcessingService {
       let obtenerDetallesFallo = false;
 
       try {
-        uberOrderDetails = await this.getOrderDetailsWithRetry(uberOrderId, 3);
+        uberOrderDetails = await this.getOrderDetailsWithRetry(uberOrderId, 5);
       } catch (detailsError: any) {
         logger.warn(`No se pudieron obtener los detalles de la orden ${uberOrderId}, continuando con webhook payload`, detailsError.message);
         obtenerDetallesFallo = true;
