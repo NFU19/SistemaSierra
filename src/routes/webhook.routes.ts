@@ -58,6 +58,30 @@ webhookRoutes.get('/api/pos/orders', (req, res) =>
 );
 
 /**
+ * POST /api/pos/orders/:id/accept
+ * Acepta la orden: la crea en Sierra y la confirma en Uber
+ */
+webhookRoutes.post('/api/pos/orders/:id/accept', (req, res) =>
+  posController.acceptOrder(req, res)
+);
+
+/**
+ * POST /api/pos/orders/:id/deny
+ * Rechaza la orden en Uber y la elimina del POS
+ */
+webhookRoutes.post('/api/pos/orders/:id/deny', (req, res) =>
+  posController.denyOrder(req, res)
+);
+
+/**
+ * POST /api/pos/orders/:id/complete
+ * Marca la orden como completada
+ */
+webhookRoutes.post('/api/pos/orders/:id/complete', (req, res) =>
+  posController.completeOrder(req, res)
+);
+
+/**
  * UBER STORE STATUS ROUTES
  * Control manual del estado de la tienda (ONLINE / PAUSED) desde el POS.
  */

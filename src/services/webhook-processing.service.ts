@@ -10,10 +10,13 @@ import { logger } from '../utils/logger';
 import { uberOrderService } from './uber-order.service';
 import { orderMapperService } from './order-mapper.service';
 import { sierraIntegrationService } from './sierra-integration.service';
-import { eventService } from './event.service';
+import { orderStore, PosOrder } from './event.service';
 
 // Valores placeholder que indican que el secret aún no se ha configurado de verdad
 const PLACEHOLDER_SECRETS = new Set(['default-secret', 'your-webhook-secret-key', '']);
+
+// Ventana de Uber para aceptar/rechazar antes del auto-cancel (~11.5 min)
+const ACCEPT_WINDOW_MS = 11.5 * 60 * 1000;
 
 interface ProcessingResult {
   success: boolean;
@@ -53,7 +56,7 @@ class WebhookProcessingService {
 
       // Paso 1: Obtener detalles completos de la orden (con reintentos)
       logger.debug('Paso 1: Obteniendo detalles de orden de Uber...');
-      
+
       let uberOrderDetails: any;
       let obtenerDetallesFallo = false;
 
@@ -62,81 +65,53 @@ class WebhookProcessingService {
       } catch (detailsError: any) {
         logger.warn(`No se pudieron obtener los detalles de la orden ${uberOrderId}, continuando con webhook payload`, detailsError.message);
         obtenerDetallesFallo = true;
-
-        // Crear un objeto mínimo con información del webhook como fallback
         uberOrderDetails = this.createMinimalOrderFromWebhook(uberOrderId, webhook);
       }
 
-      // Paso 2: Mapear a formato Sierra
+      // Paso 2: Mapear a formato Sierra (se guarda listo, pero NO se envía hasta Aceptar)
       logger.debug('Paso 2: Mapeando orden a formato Sierra...');
       const sierraOrderTicket = orderMapperService.mapUberOrderToSierraTicket(uberOrderDetails);
+      const details = this.buildOrderDetails(uberOrderDetails);
 
-      // Si fallaron los detalles y no hay PLUs, no podemos crear una orden vacía en Sierra
-      if (obtenerDetallesFallo && sierraOrderTicket.plus.length === 0) {
-        logger.warn(`Orden ${uberOrderId} recibida sin items — no se envía a Sierra. Requiere revisión manual.`);
-
-        // Opcional: rechazar en Uber para no dejar la orden vencer por timeout (penaliza la tienda)
-        if (config.uber.autoDenyUnfulfillable) {
-          logger.warn(`Auto-deny activado: rechazando orden ${uberOrderId} en Uber (sin items disponibles)`);
-          await uberOrderService.denyOrder(uberOrderId, 'ITEM_UNAVAILABLE');
-        }
-
-        eventService.emitOrderError(uberOrderId, new Error(`Orden recibida de Uber pero sin items disponibles (order fetch falló). Revisar manualmente en Uber Eats Manager.`));
-        return {
-          success: false,
-          message: 'Orden recibida sin detalles — revisión manual requerida',
-          uberOrderId,
-          error: 'No se pudieron obtener los items de la orden de Uber',
-        };
-      }
-
-      // Paso 3: Crear orden en Sierra
-      logger.debug('Paso 3: Creando orden en Sierra...');
-      const sierraResponse = await sierraIntegrationService.createOrder(sierraOrderTicket);
-
-      // Paso 4: Confirmar la orden en Uber (obligatorio dentro de 11.5 min)
-      logger.debug('Paso 4: Aceptando orden en Uber...');
-      await uberOrderService.acceptOrder(uberOrderId);
-
-      const processingTime = Date.now() - startTime;
-
-      const logMessage = obtenerDetallesFallo 
-        ? `Orden procesada (sin detalles completos) en ${processingTime}ms`
-        : `Orden procesada exitosamente en ${processingTime}ms`;
-
-      logger.info(logMessage, {
-        uberOrderId,
-        sierraOrderId: sierraResponse.orderId,
-        processingTime,
-        detallesFallo: obtenerDetallesFallo,
-      });
-
-      const successOrder = {
-        id: `order_${Date.now()}`,
-        uberOrderId,
-        timestamp: new Date().toISOString(),
-        status: 'success' as const,
+      // Paso 3: Guardar como PENDIENTE para que el operador decida (Aceptar/Denegar)
+      const pendingOrder: PosOrder = {
+        id: uberOrderId,
+        orderNumber: details.orderNumber || uberOrderId.slice(0, 8),
+        status: 'pending',
+        receivedAt: new Date().toISOString(),
+        deadline: this.computeDeadline(uberOrderDetails),
+        details,
+        ticket: sierraOrderTicket,
         message: obtenerDetallesFallo
-          ? 'Orden creada en Sierra (detalles incompletos)'
-          : 'Orden creada exitosamente en Sierra',
-        orderData: sierraOrderTicket,
-        details: this.buildOrderDetails(uberOrderDetails),
+          ? 'Detalles incompletos — revisar antes de aceptar'
+          : undefined,
       };
 
-      eventService.emitOrderProcessed(successOrder);
+      orderStore.upsert(pendingOrder);
+
+      logger.info(`Orden ${uberOrderId} PENDIENTE, esperando acción del operador`, {
+        items: sierraOrderTicket.plus.length,
+        deadline: pendingOrder.deadline,
+        tiempoProceso: Date.now() - startTime,
+      });
 
       return {
         success: true,
-        message: 'Orden procesada exitosamente',
+        message: 'Orden pendiente de aceptación',
         uberOrderId,
-        sierraOrderId: sierraResponse.orderId,
       };
     } catch (error: any) {
-      const processingTime = Date.now() - startTime;
+      logger.error(`Error procesando orden ${uberOrderId}`, error);
 
-      logger.error(`Error procesando orden ${uberOrderId} después de ${processingTime}ms`, error);
-
-      eventService.emitOrderError(uberOrderId, error);
+      // Mostrar la orden en estado de error para que sea visible en el POS
+      orderStore.upsert({
+        id: uberOrderId,
+        orderNumber: uberOrderId.slice(0, 8),
+        status: 'error',
+        receivedAt: new Date().toISOString(),
+        deadline: null,
+        message: error.message || 'Error desconocido al procesar la orden',
+      });
 
       return {
         success: false,
@@ -145,6 +120,65 @@ class WebhookProcessingService {
         error: error.stack || error.toString(),
       };
     }
+  }
+
+  /**
+   * ACEPTAR: crea la orden en Sierra y la confirma en Uber (accept_pos_order).
+   * Llamado desde el POS cuando el operador presiona "Aceptar".
+   */
+  async acceptOrder(uberOrderId: string): Promise<ProcessingResult> {
+    const order = orderStore.get(uberOrderId);
+    if (!order) {
+      throw new Error(`Orden ${uberOrderId} no encontrada`);
+    }
+    if (order.status !== 'pending') {
+      logger.warn(`Orden ${uberOrderId} ya no está pendiente (estado: ${order.status})`);
+    }
+    if (!order.ticket) {
+      throw new Error(`Orden ${uberOrderId} no tiene ticket para enviar a Sierra`);
+    }
+
+    // 1) Crear en Sierra
+    logger.info(`Aceptando orden ${uberOrderId}: creando en Sierra...`);
+    const sierraResponse = await sierraIntegrationService.createOrder(order.ticket);
+
+    // 2) Confirmar en Uber (si esto falla, Sierra ya la tiene; no revertimos)
+    await uberOrderService.acceptOrder(uberOrderId);
+
+    orderStore.setStatus(uberOrderId, 'preparing', {
+      sierraOrderId: sierraResponse.orderId,
+      message: 'Aceptada y enviada a Sierra',
+    });
+
+    logger.info(`Orden ${uberOrderId} ACEPTADA`, { sierraOrderId: sierraResponse.orderId });
+    return {
+      success: true,
+      message: 'Orden aceptada',
+      uberOrderId,
+      sierraOrderId: sierraResponse.orderId,
+    };
+  }
+
+  /**
+   * DENEGAR: rechaza la orden en Uber (deny_pos_order) y la quita del POS.
+   */
+  async denyOrder(uberOrderId: string, reason = 'ITEM_UNAVAILABLE'): Promise<ProcessingResult> {
+    const order = orderStore.get(uberOrderId);
+    if (!order) {
+      throw new Error(`Orden ${uberOrderId} no encontrada`);
+    }
+
+    logger.info(`Denegando orden ${uberOrderId} (motivo: ${reason})...`);
+    await uberOrderService.denyOrder(uberOrderId, reason);
+
+    orderStore.markDeniedAndRemove(uberOrderId, 'Rechazada por el operador');
+    return { success: true, message: 'Orden rechazada', uberOrderId };
+  }
+
+  /** Calcula la fecha límite para aceptar (placed_at + ventana de Uber). */
+  private computeDeadline(uberOrderDetails: any): string {
+    const placedAt = Number(uberOrderDetails?.timestamp) || Date.now();
+    return new Date(placedAt + ACCEPT_WINDOW_MS).toISOString();
   }
 
   /**
