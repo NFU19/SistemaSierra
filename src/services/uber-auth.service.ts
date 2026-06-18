@@ -12,6 +12,9 @@ class UberAuthService {
   private readonly axiosInstance: AxiosInstance;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
+  // Tras un fallo, no volver a pedir token hasta que pase este tiempo (evita martillar a Uber)
+  private cooldownUntil: number = 0;
+  private readonly COOLDOWN_MS = 60000;
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -20,17 +23,27 @@ class UberAuthService {
   }
 
   /**
-   * Obtiene un nuevo token de acceso usando Client Credentials Flow
-   * @returns Token de acceso de Uber
+   * Obtiene un token de acceso (Client Credentials), reusando el cacheado.
+   * El token de Uber dura ~30 días: se debe REUSAR, no pedir uno por cada llamada.
+   * Si una petición falla, entra en cooldown para no saturar el endpoint de Uber
+   * (Uber bloquea con 403/502 si se piden tokens en exceso).
    */
   async getAccessToken(): Promise<string> {
-    try {
-      // Si tenemos un token válido, lo retornamos
-      if (this.accessToken && Date.now() < this.tokenExpiresAt) {
-        logger.debug('Usando token de Uber almacenado en caché');
-        return this.accessToken;
-      }
+    // 1) Token válido en caché → reusar
+    if (this.accessToken && Date.now() < this.tokenExpiresAt) {
+      logger.debug('Usando token de Uber almacenado en caché');
+      return this.accessToken;
+    }
 
+    // 2) En cooldown tras un fallo reciente → no pegarle al endpoint
+    if (Date.now() < this.cooldownUntil) {
+      const secs = Math.ceil((this.cooldownUntil - Date.now()) / 1000);
+      throw new Error(
+        `Autenticación con Uber en cooldown (${secs}s) tras un fallo reciente — evitando saturar el endpoint de token`
+      );
+    }
+
+    try {
       logger.info('Solicitando nuevo token OAuth2 a Uber Eats...');
 
       const response = await this.axiosInstance.post<UberOAuthTokenResponse>(
@@ -50,19 +63,23 @@ class UberAuthService {
 
       const { access_token, expires_in } = response.data;
 
-      // Almacenamos el token y calculamos su expiración
-      // Restamos 60 segundos para refrescar antes de que expire completamente
       this.accessToken = access_token;
       this.tokenExpiresAt = Date.now() + (expires_in - 60) * 1000;
+      this.cooldownUntil = 0;
 
-      logger.info('Token OAuth2 obtenido exitosamente', {
-        expiresIn: expires_in,
-      });
+      logger.info('Token OAuth2 obtenido exitosamente', { expiresIn: expires_in });
 
       return access_token;
-    } catch (error) {
-      logger.error('Error al obtener token OAuth2 de Uber', error);
-      throw new Error('Fallo en la autenticación con Uber Eats');
+    } catch (error: any) {
+      const status = error.response?.status;
+      // Activar cooldown para no martillar (clave cuando Uber rate-limitea con 403/502)
+      this.cooldownUntil = Date.now() + this.COOLDOWN_MS;
+      // Log compacto (sin volcar el objeto axios entero)
+      logger.error(
+        `Error al obtener token OAuth2 de Uber (status=${status ?? 'sin-respuesta'}) — cooldown ${this.COOLDOWN_MS / 1000}s`,
+        error.message
+      );
+      throw new Error(`Fallo en la autenticación con Uber Eats (${status ?? 'sin status'})`);
     }
   }
 

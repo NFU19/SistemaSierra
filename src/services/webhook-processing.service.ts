@@ -134,13 +134,27 @@ class WebhookProcessingService {
     if (order.status !== 'pending') {
       logger.warn(`Orden ${uberOrderId} ya no está pendiente (estado: ${order.status})`);
     }
-    if (!order.ticket) {
-      throw new Error(`Orden ${uberOrderId} no tiene ticket para enviar a Sierra`);
+
+    let ticket = order.ticket;
+
+    // Si la orden quedó sin items (p.ej. el fetch inicial falló por token caído),
+    // reintentamos obtener los detalles AHORA antes de mandarla a Sierra.
+    if (!ticket || ticket.plus.length === 0) {
+      logger.warn(`Orden ${uberOrderId} sin items — reintentando obtener detalles de Uber...`);
+      const details = await uberOrderService.getOrderDetails(uberOrderId);
+      ticket = orderMapperService.mapUberOrderToSierraTicket(details);
+      orderStore.setStatus(uberOrderId, order.status, {
+        ticket,
+        details: this.buildOrderDetails(details),
+      });
+      if (ticket.plus.length === 0) {
+        throw new Error('La orden no tiene productos disponibles en Uber');
+      }
     }
 
     // 1) Crear en Sierra
     logger.info(`Aceptando orden ${uberOrderId}: creando en Sierra...`);
-    const sierraResponse = await sierraIntegrationService.createOrder(order.ticket);
+    const sierraResponse = await sierraIntegrationService.createOrder(ticket);
 
     // 2) Confirmar en Uber (si esto falla, Sierra ya la tiene; no revertimos)
     await uberOrderService.acceptOrder(uberOrderId);
@@ -198,8 +212,15 @@ class WebhookProcessingService {
         lastError = error;
         logger.warn(`Intento ${attempt} falló para orden ${orderId}:`, error.message);
 
-        // No reintentar si es error de autenticación
-        if (error.message?.includes('401') || error.message?.includes('Token')) {
+        // No reintentar si es error de autenticación/cooldown: reintentar solo
+        // martillaría el endpoint de token de Uber (que rate-limitea con 403/502).
+        const msg = String(error.message || '');
+        if (
+          msg.includes('401') ||
+          msg.includes('Token') ||
+          msg.includes('autenticación') ||
+          msg.includes('cooldown')
+        ) {
           throw error;
         }
 
