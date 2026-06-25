@@ -6,7 +6,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config/config';
 import { logger } from '../utils/logger';
-import { OrderTicket, SierraApiResponse, SierraOrderResponse } from '../interfaces/sierra.interface';
+import { OrderTicket, SierraOrderResponse } from '../interfaces/sierra.interface';
 
 class SierraIntegrationService {
   private readonly axiosInstance: AxiosInstance;
@@ -61,7 +61,8 @@ class SierraIntegrationService {
     try {
       logger.info(`Creando orden en Sierra: ${orderTicket.order}`);
 
-      const response = await this.axiosInstance.post<SierraApiResponse<SierraOrderResponse>>(
+      // La API de Sierra responde con el objeto OrderResponse directamente en el cuerpo.
+      const response = await this.axiosInstance.post<SierraOrderResponse>(
         '/api/v1/orders',
         orderTicket
       );
@@ -71,17 +72,16 @@ class SierraIntegrationService {
         throw new Error('Respuesta inválida de Sierra POS');
       }
 
+      const sierraResponse = response.data;
+
       logger.info('Orden creada exitosamente en Sierra', {
-        orderId: orderTicket.order,
-        sierraResponse: response.data,
+        order: sierraResponse.order ?? orderTicket.order,
+        folio: sierraResponse.folio,
+        con: sierraResponse.con,
+        msg: sierraResponse.msg,
       });
 
-      return response.data.data || {
-        orderId: orderTicket.order,
-        folio: 0,
-        timestamp: new Date().toISOString(),
-        status: 'created',
-      };
+      return sierraResponse;
     } catch (error) {
       logger.error(`Error al crear orden en Sierra: ${orderTicket.order}`, error);
       this.handleSierraError(error);

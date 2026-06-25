@@ -1,10 +1,16 @@
 /**
  * Servicio de Mapeo: Translada órdenes de Uber Eats al formato de Sistemas Sierra
+ * El OrderTicket resultante se ajusta al esquema documentado en la Web Api de Sierra
+ * (cuerpo de POST /api/v1/orders).
  */
 
-import { OrderTicket, PluOrder, ClientOrder } from '../interfaces/sierra.interface';
-import { UberOrderDetails } from '../interfaces/uber.interface';
+import { OrderTicket, PluOrder, ClientOrder, SubPlus } from '../interfaces/sierra.interface';
+import { UberOrderDetails, UberCustomization } from '../interfaces/uber.interface';
+import { config } from '../config/config';
 import { logger } from '../utils/logger';
+
+/** Redondea a 2 decimales (evita arrastre de flotantes en importes). */
+const money = (value: number): number => Math.round((Number(value) || 0) * 100) / 100;
 
 class OrderMapperService {
   /**
@@ -16,34 +22,51 @@ class OrderMapperService {
     logger.info(`Mapeando orden de Uber ${uberOrder.id} a formato Sierra`);
 
     try {
-      // Mapear items
+      // Productos (PLUs) con sus modificadores (subPlus)
       const mappedPlus = this.mapUberItemsToSierraPlus(uberOrder.items);
 
-      // Calcular totales
-      const subTotal = mappedPlus.reduce((acc, item) => acc + item.subTotal, 0);
-      const tax = uberOrder.totals.tax;
+      // Totales: subtotal real de la orden (suma de productos + modificadores) e IVA
+      const subTotal = money(
+        mappedPlus.reduce(
+          (acc, item) =>
+            acc + item.subTotal + (item.subPlus ?? []).reduce((s, sp) => s + (sp.subTotal ?? 0), 0),
+          0
+        )
+      );
+      const tax = money(uberOrder.totals?.tax ?? 0);
 
-      const client: ClientOrder[] = [{
-        nombre: `${uberOrder.customer.first_name} ${uberOrder.customer.last_name}`.trim() || 'Uber Eats',
-        telefono: uberOrder.customer.phone_number || '0000000000',
-      }];
+      // Orden de Uber: el pago ya se cobró en línea → se marca como pagada (credits)
+      // para que la cuenta quede saldada en el PDV.
+      const credits = money(subTotal + tax);
 
       const orderTicket: OrderTicket = {
-        order: uberOrder.id, // Usar el order_id de Uber como identificador único
-        subTotal: Math.round(subTotal * 100) / 100, // Redondear a 2 decimales
-        tax: Math.round(tax * 100) / 100,
-        orderType: 'ORDEN WEB ONLINE',
+        order: uberOrder.order_number || uberOrder.id,
+        subTotal,
+        tax,
+        credits,
+        change: 0,
+        orderType: config.sierra.order.type,
+        salesType: config.sierra.order.salesType,
+        openStatus: config.sierra.order.openStatus,
+        production: config.sierra.order.production,
+        routeProducts: config.sierra.order.routeProducts,
+        server: config.sierra.order.server || undefined,
+        cashier: config.sierra.order.cashier || undefined,
+        paymentTransactionId: uberOrder.id,
+        paymentIdentifierString: config.sierra.order.paymentLabel,
+        orderName: this.buildOrderName(uberOrder),
+        orderComments: this.buildOrderComments(uberOrder),
+        client: this.mapClient(uberOrder),
         plus: mappedPlus,
-        client,
-        observation: this.buildObservation(uberOrder),
-        salesType: 'DELIVERY',
-        employeeNumber: 0, // El sistema asignará un empleado automático
+        payments: [],
       };
 
       logger.debug('Orden mapeada exitosamente', {
-        orderId: orderTicket.order,
+        order: orderTicket.order,
         itemsCount: orderTicket.plus.length,
-        total: subTotal + tax,
+        subTotal,
+        tax,
+        total: credits,
       });
 
       return orderTicket;
@@ -54,27 +77,75 @@ class OrderMapperService {
   }
 
   /**
-   * Mapea los items de Uber a PLUs de Sierra
+   * Mapea los datos del cliente de Uber al schema ClientOrder de Sierra.
+   */
+  private mapClient(uberOrder: UberOrderDetails): ClientOrder[] {
+    const customer = uberOrder.customer;
+    const name =
+      `${customer?.first_name ?? ''} ${customer?.last_name ?? ''}`.trim() || 'Uber Eats';
+    const phone = customer?.phone_number || undefined;
+
+    return [
+      {
+        clientId: customer?.id || undefined,
+        name,
+        telephone: phone,
+        mobilPhone: phone,
+        email: customer?.email || undefined,
+      },
+    ];
+  }
+
+  /**
+   * Mapea los items de Uber a PLUs de Sierra (con sus modificadores como subPlus).
    * @param uberItems Items de la orden en Uber
    * @returns Array de PLUs para Sierra
    */
-  private mapUberItemsToSierraPlus(
-    uberItems: any[]
-  ): PluOrder[] {
-    return uberItems.map((item) => {
-      const unitPrice = item.unit_price;
-      const quantity = item.quantity;
-      const subTotal = unitPrice * quantity;
+  private mapUberItemsToSierraPlus(uberItems: any[]): PluOrder[] {
+    return (uberItems ?? []).map((item) => {
+      const unitPrice = money(item.unit_price);
+      const quantity = Number(item.quantity) || 1;
+      const subTotal = money(unitPrice * quantity);
 
       return {
         plu: this.mapUberItemIdToPlus(item.id, item.title),
+        description: item.title || undefined,
         quantity,
-        unitPrice: Math.round(unitPrice * 100) / 100,
-        subTotal: Math.round(subTotal * 100) / 100,
-        tax: 0, // Tax se calcula a nivel de orden en Sierra
-        customizations: this.buildCustomizationString(item.customizations),
+        unitPrice,
+        subTotal,
+        tax: 0, // El IVA se maneja a nivel de orden en Sierra
+        comments: item.special_instructions || undefined,
+        subPlus: this.mapCustomizationsToSubPlus(item.customizations),
       };
     });
+  }
+
+  /**
+   * Convierte las customizaciones de un item de Uber en modificadores (subPlus) de Sierra.
+   * Cada selección se convierte en un subPlus con su descripción y precio.
+   * @param customizations Customizaciones del item
+   * @returns Array de subPlus (vacío si no hay customizaciones)
+   */
+  private mapCustomizationsToSubPlus(customizations?: UberCustomization[]): SubPlus[] {
+    if (!customizations || customizations.length === 0) {
+      return [];
+    }
+
+    const subPlus: SubPlus[] = [];
+    for (const custom of customizations) {
+      for (const selection of custom.selections ?? []) {
+        const price = money(selection.price);
+        subPlus.push({
+          plu: selection.id || undefined,
+          description: custom.title ? `${custom.title}: ${selection.title}` : selection.title,
+          quantity: 1,
+          unitPrice: price,
+          subTotal: price,
+          tax: 0,
+        });
+      }
+    }
+    return subPlus;
   }
 
   /**
@@ -87,52 +158,41 @@ class OrderMapperService {
     // Mapeo directo por ID: el ID de Uber se usa como PLU en Sierra.
     // Implementar tabla de equivalencias real cuando se disponga del catalogo final.
     logger.debug(`Mapeando Uber item ${uberItemId} (${itemTitle}) a PLU`);
-
-    // Ejemplo: si Uber item es "12345", PLU sería "UE12345"
-    // Esto debe reemplazarse con un mapeo real de base de datos
     return `${uberItemId}`;
   }
 
   /**
-   * Construye el string de observaciones/customizaciones para Sierra
-   * @param customizations Array de customizaciones
-   * @returns String de observaciones
+   * Nombre legible de la orden para identificarla en el PDV.
    */
-  private buildCustomizationString(
-    customizations?: any[]
-  ): string | undefined {
-    if (!customizations || customizations.length === 0) {
-      return undefined;
-    }
-
-    const customizationTexts = customizations.map((custom) => {
-      const selections = custom.selections
-        .map((sel: any) => sel.title)
-        .join(', ');
-      return `${custom.title}: ${selections}`;
-    });
-
-    return customizationTexts.join('; ');
+  private buildOrderName(uberOrder: UberOrderDetails): string {
+    const number = uberOrder.order_number || uberOrder.id.slice(0, 8);
+    const customer = `${uberOrder.customer?.first_name ?? ''} ${
+      uberOrder.customer?.last_name ?? ''
+    }`.trim();
+    return customer ? `Uber #${number} - ${customer}` : `Uber #${number}`;
   }
 
   /**
-   * Construye el campo de observaciones de la orden
+   * Construye el campo de comentarios de la orden (orderComments de Sierra).
    * @param uberOrder Orden de Uber
-   * @returns String de observaciones
+   * @returns String de comentarios
    */
-  private buildObservation(uberOrder: UberOrderDetails): string {
-    const observations: string[] = [];
+  private buildOrderComments(uberOrder: UberOrderDetails): string {
+    const parts: string[] = [];
 
     if (uberOrder.special_instructions) {
-      observations.push(`Instrucciones especiales: ${uberOrder.special_instructions}`);
+      parts.push(`Instrucciones: ${uberOrder.special_instructions}`);
     }
 
-    observations.push(
-      `Cliente: ${uberOrder.customer.first_name} ${uberOrder.customer.last_name}`,
-      `Teléfono: ${uberOrder.customer.phone_number}`
-    );
+    const customer = `${uberOrder.customer?.first_name ?? ''} ${
+      uberOrder.customer?.last_name ?? ''
+    }`.trim();
+    if (customer) parts.push(`Cliente: ${customer}`);
+    if (uberOrder.customer?.phone_number) {
+      parts.push(`Tel: ${uberOrder.customer.phone_number}`);
+    }
 
-    return observations.join(' | ');
+    return parts.join(' | ');
   }
 }
 

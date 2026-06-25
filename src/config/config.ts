@@ -35,6 +35,25 @@ export const config = {
   sierra: {
     apiUrl: process.env.SIERRA_API_URL || 'https://demo-services-alternative.sierraerp.com',
     apiKey: process.env.SIERRA_API_KEY || '',
+    // Valores por defecto aplicados al OrderTicket que se envía a Sierra al aceptar una orden.
+    order: {
+      // Tipo de orden según origen (catálogo de Sierra). Para Uber Eats: "ORDEN WEB ONLINE".
+      type: process.env.SIERRA_ORDER_TYPE || 'ORDEN WEB ONLINE',
+      // Tipo de venta: clave NUMÉRICA del catálogo de tipos de venta de Sierra (GET /api/v1/tables/salestype).
+      salesType: process.env.SIERRA_ORDER_SALES_TYPE || '1',
+      // Estado de apertura: "0" cierra automáticamente, "1" el cliente debe cerrar la cuenta.
+      openStatus: process.env.SIERRA_ORDER_OPEN_STATUS || '0',
+      // Mesero/empleado al que se asigna la orden (clave de empleado).
+      server: process.env.SIERRA_ORDER_SERVER || '',
+      // Cajero (opcional).
+      cashier: process.env.SIERRA_ORDER_CASHIER || '',
+      // Enviar productos a cocina(s)/barra(s).
+      routeProducts: process.env.SIERRA_ORDER_ROUTE_PRODUCTS !== 'false',
+      // Marca la orden como producción (true) o demo/pruebas (false).
+      production: process.env.SIERRA_ORDER_PRODUCTION === 'true',
+      // Etiqueta del método de pago a mostrar en el PDV.
+      paymentLabel: process.env.SIERRA_ORDER_PAYMENT_LABEL || 'Uber Eats',
+    },
   },
 
   // Webhook

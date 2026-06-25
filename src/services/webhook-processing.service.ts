@@ -156,20 +156,26 @@ class WebhookProcessingService {
     logger.info(`Aceptando orden ${uberOrderId}: creando en Sierra...`);
     const sierraResponse = await sierraIntegrationService.createOrder(ticket);
 
+    // Identificador de la orden en el PDV: el folio (Nota en Sistema PDV), con respaldo al numero original.
+    const sierraOrderId = sierraResponse.folio || sierraResponse.order || ticket.order;
+
     // 2) Confirmar en Uber (si esto falla, Sierra ya la tiene; no revertimos)
     await uberOrderService.acceptOrder(uberOrderId);
 
     orderStore.setStatus(uberOrderId, 'preparing', {
-      sierraOrderId: sierraResponse.orderId,
+      sierraOrderId,
       message: 'Aceptada y enviada a Sierra',
     });
 
-    logger.info(`Orden ${uberOrderId} ACEPTADA`, { sierraOrderId: sierraResponse.orderId });
+    logger.info(`Orden ${uberOrderId} ACEPTADA`, {
+      sierraFolio: sierraResponse.folio,
+      sierraCon: sierraResponse.con,
+    });
     return {
       success: true,
       message: 'Orden aceptada',
       uberOrderId,
-      sierraOrderId: sierraResponse.orderId,
+      sierraOrderId,
     };
   }
 
