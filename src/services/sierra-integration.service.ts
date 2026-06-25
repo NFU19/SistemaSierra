@@ -61,6 +61,11 @@ class SierraIntegrationService {
     try {
       logger.info(`Creando orden en Sierra: ${orderTicket.order}`);
 
+      // Mostrar el cuerpo COMPLETO que se envía a Sierra (POST /api/v1/orders).
+      logger.info(
+        `[Sierra API] → POST /api/v1/orders payload:\n${JSON.stringify(orderTicket, null, 2)}`
+      );
+
       // La API de Sierra responde con el objeto OrderResponse directamente en el cuerpo.
       const response = await this.axiosInstance.post<SierraOrderResponse>(
         '/api/v1/orders',
@@ -73,6 +78,11 @@ class SierraIntegrationService {
       }
 
       const sierraResponse = response.data;
+
+      // Mostrar la respuesta COMPLETA de Sierra.
+      logger.info(
+        `[Sierra API] ← Response ${response.status}:\n${JSON.stringify(sierraResponse, null, 2)}`
+      );
 
       logger.info('Orden creada exitosamente en Sierra', {
         order: sierraResponse.order ?? orderTicket.order,
