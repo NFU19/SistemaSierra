@@ -59,13 +59,16 @@ class OrderMapperService {
         client: this.mapClient(uberOrder),
         plus: mappedPlus,
         // Pago de la orden: PLU y descripción fijos (config), importe = total de la cuenta.
-        payments: [
-          {
-            plu: config.sierra.order.paymentPlu,
-            description: config.sierra.order.paymentLabel,
-            unitPrice: credits,
-          },
-        ],
+        // Se omite si SIERRA_ORDER_REGISTER_PAYMENT=false (p.ej. si el PLU de pago no existe aún).
+        payments: config.sierra.order.registerPayment
+          ? [
+              {
+                plu: config.sierra.order.paymentPlu,
+                description: config.sierra.order.paymentLabel,
+                unitPrice: credits,
+              },
+            ]
+          : [],
       };
 
       logger.debug('Orden mapeada exitosamente', {

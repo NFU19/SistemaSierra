@@ -55,6 +55,9 @@ export const config = {
       paymentLabel: process.env.SIERRA_ORDER_PAYMENT_LABEL || 'Uber Eats',
       // PLU fijo del método de pago usado para registrar el pago de la orden en Sierra.
       paymentPlu: process.env.SIERRA_ORDER_PAYMENT_PLU || '99103',
+      // Registrar el pago en payments[]. Si es false, se envía payments vacío
+      // (útil si el PLU de pago aún no existe en el catálogo de Sierra).
+      registerPayment: process.env.SIERRA_ORDER_REGISTER_PAYMENT !== 'false',
     },
   },
 
