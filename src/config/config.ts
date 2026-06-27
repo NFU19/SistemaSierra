@@ -53,6 +53,8 @@ export const config = {
       production: process.env.SIERRA_ORDER_PRODUCTION === 'true',
       // Etiqueta del método de pago a mostrar en el PDV.
       paymentLabel: process.env.SIERRA_ORDER_PAYMENT_LABEL || 'Uber Eats',
+      // PLU fijo del método de pago usado para registrar el pago de la orden en Sierra.
+      paymentPlu: process.env.SIERRA_ORDER_PAYMENT_PLU || '99103',
     },
   },
 
