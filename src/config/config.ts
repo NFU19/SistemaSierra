@@ -29,6 +29,10 @@ export const config = {
     setOnlineOnStartup: process.env.UBER_SET_ONLINE_ON_STARTUP !== 'false',
     // Rechazar automáticamente órdenes que no se pueden cumplir (sin items/PLU) en lugar de dejarlas vencer
     autoDenyUnfulfillable: process.env.UBER_AUTO_DENY_UNFULFILLABLE === 'true',
+    // Con "Require RD Accept Before POS Injection" activo en Uber, las órdenes llegan ya
+    // ACEPTADAS desde el Restaurant Dashboard. Si esto es true, el middleware crea la orden
+    // en Sierra automáticamente al recibir el webhook (sin esperar clic manual en el POS).
+    autoCreateOnAccepted: process.env.AUTO_CREATE_ON_ACCEPTED !== 'false',
   },
 
   // Sistemas Sierra

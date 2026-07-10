@@ -27,6 +27,10 @@ interface ProcessingResult {
 }
 
 class WebhookProcessingService {
+  // Idempotencia: IDs de órdenes que se están creando en Sierra en este momento,
+  // para no crear duplicados si Uber reenvía el mismo webhook (entrega "at-least-once").
+  private readonly processingOrders = new Set<string>();
+
   /**
    * Procesa un webhook de Uber Eats de forma asíncrona
    * @param webhook Payload del webhook
@@ -72,6 +76,30 @@ class WebhookProcessingService {
       logger.debug('Paso 2: Mapeando orden a formato Sierra...');
       const sierraOrderTicket = orderMapperService.mapUberOrderToSierraTicket(uberOrderDetails);
       const details = this.buildOrderDetails(uberOrderDetails);
+
+      // Con "Require RD Accept Before POS Injection" activo, la orden llega YA ACEPTADA desde
+      // el Restaurant Dashboard de Uber (current_state = ACCEPTED). En ese caso la creamos en
+      // Sierra automáticamente, sin esperar acción manual en el POS ni llamar accept_pos_order.
+      const isAccepted = String(uberOrderDetails.status || '').toUpperCase() === 'ACCEPTED';
+      if (config.uber.autoCreateOnAccepted && isAccepted && sierraOrderTicket.plus.length > 0) {
+        // Idempotencia: ignorar webhooks duplicados de una orden ya creada o en proceso.
+        const existing = orderStore.get(uberOrderId);
+        if (this.processingOrders.has(uberOrderId) || existing?.sierraOrderId) {
+          logger.info(`Orden ${uberOrderId} ya procesada/en proceso — webhook duplicado ignorado`);
+          return { success: true, message: 'Orden ya procesada (idempotente)', uberOrderId };
+        }
+        this.processingOrders.add(uberOrderId);
+        try {
+          return await this.autoCreateAcceptedOrder(
+            uberOrderId,
+            sierraOrderTicket,
+            details,
+            startTime
+          );
+        } finally {
+          this.processingOrders.delete(uberOrderId);
+        }
+      }
 
       // Paso 3: Guardar como PENDIENTE para que el operador decida (Aceptar/Denegar)
       const pendingOrder: PosOrder = {
@@ -177,6 +205,67 @@ class WebhookProcessingService {
       uberOrderId,
       sierraOrderId,
     };
+  }
+
+  /**
+   * AUTO-CREAR: la orden ya fue aceptada en el Restaurant Dashboard de Uber
+   * (Require RD Accept Before POS Injection). Se crea en Sierra directamente al recibir
+   * el webhook, sin acción manual del operador y sin llamar accept_pos_order.
+   */
+  private async autoCreateAcceptedOrder(
+    uberOrderId: string,
+    ticket: PosOrder['ticket'],
+    details: ReturnType<WebhookProcessingService['buildOrderDetails']>,
+    startTime: number
+  ): Promise<ProcessingResult> {
+    const orderNumber = details.orderNumber || uberOrderId.slice(0, 8);
+
+    // Mostrar la orden de inmediato en el POS mientras se registra en Sierra.
+    orderStore.upsert({
+      id: uberOrderId,
+      orderNumber,
+      status: 'preparing',
+      receivedAt: new Date().toISOString(),
+      deadline: null,
+      details,
+      ticket,
+      message: 'Aceptada en Uber — registrando en Sierra...',
+    });
+
+    try {
+      logger.info(`Orden ${uberOrderId} aceptada en Uber (RD) — creando en Sierra...`);
+      const sierraResponse = await sierraIntegrationService.createOrder(ticket!);
+      const sierraOrderId = sierraResponse.folio || sierraResponse.order || ticket!.order;
+
+      orderStore.setStatus(uberOrderId, 'preparing', {
+        sierraOrderId,
+        message: 'Aceptada en Uber y creada en Sierra',
+      });
+
+      logger.info(`Orden ${uberOrderId} CREADA en Sierra automáticamente`, {
+        sierraFolio: sierraResponse.folio,
+        sierraCon: sierraResponse.con,
+        tiempoProceso: Date.now() - startTime,
+      });
+
+      return {
+        success: true,
+        message: 'Orden aceptada en Uber y creada en Sierra',
+        uberOrderId,
+        sierraOrderId,
+      };
+    } catch (error: any) {
+      logger.error(`Error al crear en Sierra la orden aceptada ${uberOrderId}`, error);
+      orderStore.setStatus(uberOrderId, 'error', {
+        message: `Aceptada en Uber pero falló al crear en Sierra: ${error.message || 'error desconocido'}`,
+      });
+      return {
+        success: false,
+        message: error.message || 'Error al crear la orden en Sierra',
+        uberOrderId,
+        error: error.stack || error.toString(),
+      };
+    }
   }
 
   /**
