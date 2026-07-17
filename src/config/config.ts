@@ -3,6 +3,8 @@
  */
 
 import dotenv from 'dotenv';
+import os from 'node:os';
+import path from 'node:path';
 
 dotenv.config();
 
@@ -25,8 +27,20 @@ export const config = {
     scopes:
       process.env.UBER_SCOPES ||
       'eats.order eats.store.orders.read eats.store eats.store.status.write',
-    // Poner la tienda ONLINE automáticamente al arrancar el servidor
+    // Poner la tienda ONLINE automáticamente al arrancar el servidor.
+    // Ojo: cada arranque pide un token. Si Render reinicia seguido, ponlo en false.
     setOnlineOnStartup: process.env.UBER_SET_ONLINE_ON_STARTUP !== 'false',
+    // Token semilla. El token de Uber dura ~30 días; guardarlo aquí evita pedir uno nuevo
+    // en cada deploy/reinicio (las variables de entorno sí sobreviven a los reinicios).
+    accessToken: process.env.UBER_ACCESS_TOKEN || '',
+    // Vencimiento del token semilla (ISO o epoch en ms). Opcional.
+    accessTokenExpiresAt: process.env.UBER_ACCESS_TOKEN_EXPIRES_AT || '',
+    // Archivo donde se cachea el token entre reinicios (si el disco lo permite).
+    tokenCachePath:
+      process.env.UBER_TOKEN_CACHE_PATH || path.join(os.tmpdir(), 'uber-token-cache.json'),
+    // Espera tras un fallo al pedir token. Uber bloquea con 403 si se piden tokens en exceso,
+    // y ese bloqueo dura bastante más que unos segundos. Predeterminado: 10 minutos.
+    tokenCooldownMs: Number.parseInt(process.env.UBER_TOKEN_COOLDOWN_MS || '600000', 10),
     // Rechazar automáticamente órdenes que no se pueden cumplir (sin items/PLU) en lugar de dejarlas vencer
     autoDenyUnfulfillable: process.env.UBER_AUTO_DENY_UNFULFILLABLE === 'true',
     // Con "Require RD Accept Before POS Injection" activo en Uber, las órdenes llegan ya
