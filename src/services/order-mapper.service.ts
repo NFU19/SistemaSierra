@@ -21,6 +21,22 @@ class OrderMapperService {
   mapUberOrderToSierraTicket(uberOrder: UberOrderDetails): OrderTicket {
     logger.info(`Mapeando orden de Uber ${uberOrder.id} a formato Sierra`);
 
+    // Diagnóstico: ver EXACTAMENTE qué precio manda Uber por producto y por modificador,
+    // para decidir cómo desglosar los modificadores sin duplicar el cobro.
+    logger.info(
+      '[Diagnóstico precios Uber] ' +
+        JSON.stringify(
+          (uberOrder.items ?? []).map((i: any) => ({
+            title: i.title,
+            unit_price: i.unit_price,
+            price: i.price,
+            mods: (i.customizations ?? []).flatMap((c: any) =>
+              (c.selections ?? []).map((s: any) => ({ title: s.title, price: s.price }))
+            ),
+          }))
+        )
+    );
+
     try {
       // Productos (PLUs) con sus modificadores (subPlus)
       const mappedPlus = this.mapUberItemsToSierraPlus(uberOrder.items);
