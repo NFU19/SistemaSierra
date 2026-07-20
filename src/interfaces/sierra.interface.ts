@@ -8,27 +8,25 @@
 /** Datos del cliente de la orden (schema ClientOrder de Sierra). */
 export interface ClientOrder {
   /** Numero de Cliente */
-  clientId?: string;
+  clientId?: string | null;
   /** Nombre */
-  name?: string;
+  name?: string | null;
   /** Calle y Numero */
-  address?: string;
-  /** Colonia */
-  address2?: string;
+  address?: string | null;
   /** Ciudad */
-  city?: string;
+  city?: string | null;
   /** Codigo Postal */
-  zipCode?: string;
+  zipCode?: string | null;
   /** Correo Electronico */
-  email?: string;
+  email?: string | null;
   /** Telefono */
-  telephone?: string;
+  telephone?: string | null;
   /** Telefono Celular */
-  mobilPhone?: string;
-  memo1?: string;
-  memo2?: string;
-  memo3?: string;
-  memo4?: string;
+  mobilPhone?: string | null;
+  memo1?: string | null;
+  memo2?: string | null;
+  memo3?: string | null;
+  memo4?: string | null;
 }
 
 /** Modificador de un producto (schema SubPlus de Sierra). */
@@ -63,8 +61,8 @@ export interface PluOrder {
   unitPrice: number;
   /** Subtotal */
   subTotal: number;
-  /** Total Iva */
-  tax: number;
+  /** Total Iva (opcional) */
+  tax?: number;
   /** Tabla de Iva */
   taxTable?: string;
   /** Comentarios para el producto */
@@ -87,16 +85,16 @@ export interface PaymentOrder {
 export interface OrderTicket {
   /** Numero de Orden Original */
   order: string;
-  /** Numero de Terminal */
+  /** Numero de Terminal (solo formato kiosko) */
   terminal?: string;
   /** Mesero */
-  server?: string;
+  server?: string | null;
   /** Cajero */
   cashier?: string;
   /** Subtotal */
   subTotal: number;
-  /** Iva */
-  tax: number;
+  /** Iva (opcional) */
+  tax?: number;
   /** Pagos */
   credits?: number;
   /** Cambio */
@@ -114,7 +112,7 @@ export interface OrderTicket {
   /** Folio del sistema de pagos (Stripe, etc.) */
   paymentTransactionId?: string;
   /** Comentarios para la orden */
-  orderComments?: string;
+  orderComments?: string | null;
   /** Datos del Cliente */
   client: ClientOrder[];
   /** Lista de Plus en orden */
@@ -122,9 +120,9 @@ export interface OrderTicket {
   /** Lista de Pagos (opcional) */
   payments?: PaymentOrder[];
   /** Nombre del metodo de pago (para concatenar donde se muestra la orden en PDV) */
-  paymentIdentifierString?: string;
+  paymentIdentifierString?: string | null;
   /** Numero de mesa (para cuentas QR locales) */
-  tableNumber?: string;
+  tableNumber?: string | null;
   /** Nombre de la orden (para identificarla en el PDV) */
   orderName?: string;
 }

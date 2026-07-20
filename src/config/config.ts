@@ -55,24 +55,28 @@ export const config = {
     apiKey: process.env.SIERRA_API_KEY || '',
     // Valores por defecto aplicados al OrderTicket que se envía a Sierra al aceptar una orden.
     order: {
-      // Tipo de orden según origen (catálogo de Sierra). Para Uber Eats: "ORDEN WEB ONLINE".
+      // Tipo de orden según origen (catálogo de Sierra). Para Uber Eats (órdenes online) se usa
+      // el formato OrderSierra: "ORDEN WEB ONLINE".
       type: process.env.SIERRA_ORDER_TYPE || 'ORDEN WEB ONLINE',
+      // Terminal (solo la usa el formato kiosko "ORDEN WEB EN SITIO"; el web online no la envía).
+      terminal: process.env.SIERRA_ORDER_TERMINAL || '07',
       // Tipo de venta: clave NUMÉRICA del catálogo de tipos de venta de Sierra (GET /api/v1/tables/salestype).
       salesType: process.env.SIERRA_ORDER_SALES_TYPE || '1',
-      // Estado de apertura: "0" cierra automáticamente, "1" el cliente debe cerrar la cuenta.
-      openStatus: process.env.SIERRA_ORDER_OPEN_STATUS || '0',
+      // Estado de apertura: "0" cierra automáticamente, "1" la cierra el personal del restaurante.
+      openStatus: process.env.SIERRA_ORDER_OPEN_STATUS || '1',
       // Mesero/empleado al que se asigna la orden (clave de empleado).
       server: process.env.SIERRA_ORDER_SERVER || '',
       // Cajero (opcional).
       cashier: process.env.SIERRA_ORDER_CASHIER || '',
-      // Enviar productos a cocina(s)/barra(s).
+      // Enviar productos a cocina(s)/barra(s). El formato web online usa true.
       routeProducts: process.env.SIERRA_ORDER_ROUTE_PRODUCTS !== 'false',
       // Marca la orden como producción (true) o demo/pruebas (false).
       production: process.env.SIERRA_ORDER_PRODUCTION === 'true',
       // Etiqueta del método de pago a mostrar en el PDV.
       paymentLabel: process.env.SIERRA_ORDER_PAYMENT_LABEL || 'Uber Eats',
-      // PLU fijo del método de pago usado para registrar el pago de la orden en Sierra.
-      paymentPlu: process.env.SIERRA_ORDER_PAYMENT_PLU || '99103',
+      // PLU fijo del método de pago usado en payments[]. Según el esquema de Sierra el
+      // predeterminado del formato web online es 91101 (no 99103, que es un artículo).
+      paymentPlu: process.env.SIERRA_ORDER_PAYMENT_PLU || '91101',
       // Registrar el pago en payments[]. Si es false, se envía payments vacío
       // (útil si el PLU de pago aún no existe en el catálogo de Sierra).
       registerPayment: process.env.SIERRA_ORDER_REGISTER_PAYMENT !== 'false',

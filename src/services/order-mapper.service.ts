@@ -25,7 +25,7 @@ class OrderMapperService {
       // Productos (PLUs) con sus modificadores (subPlus)
       const mappedPlus = this.mapUberItemsToSierraPlus(uberOrder.items);
 
-      // Totales: subtotal real de la orden (suma de productos + modificadores) e IVA
+      // Subtotal real de la orden (suma de productos + modificadores).
       const subTotal = money(
         mappedPlus.reduce(
           (acc, item) =>
@@ -33,50 +33,43 @@ class OrderMapperService {
           0
         )
       );
-      const tax = money(uberOrder.totals?.tax ?? 0);
 
-      // Orden de Uber: el pago ya se cobró en línea → se marca como pagada (credits)
-      // para que la cuenta quede saldada en el PDV.
-      const credits = money(subTotal + tax);
-
+      // Formato OrderSierra (ORDEN WEB ONLINE): es el que usan las órdenes web normales.
+      // El pago se indica con paymentIdentifierString + paymentTransactionId; payments[] va
+      // vacío. Se deja que Sierra aplique su configuración por orderType.
       const orderTicket: OrderTicket = {
         order: uberOrder.order_number || uberOrder.id,
         subTotal,
-        tax,
-        credits,
-        change: 0,
-        orderType: config.sierra.order.type,
-        salesType: config.sierra.order.salesType,
-        openStatus: config.sierra.order.openStatus,
-        production: config.sierra.order.production,
-        routeProducts: config.sierra.order.routeProducts,
-        server: config.sierra.order.server || undefined,
-        cashier: config.sierra.order.cashier || undefined,
+        // El pago de Uber ya se cobró en línea → se marca saldada.
+        credits: subTotal,
         paymentTransactionId: uberOrder.id,
         paymentIdentifierString: config.sierra.order.paymentLabel,
-        orderName: this.buildOrderName(uberOrder),
-        orderComments: this.buildOrderComments(uberOrder),
+        tableNumber: null,
+        orderComments: uberOrder.special_instructions || null,
         client: this.mapClient(uberOrder),
         plus: mappedPlus,
-        // Pago de la orden: PLU y descripción fijos (config), importe = total de la cuenta.
-        // Se omite si SIERRA_ORDER_REGISTER_PAYMENT=false (p.ej. si el PLU de pago no existe aún).
+        // El pago se refleja en paymentIdentifierString; payments[] queda vacío salvo que se
+        // habilite explícitamente (con el PLU de forma de pago correcto, 91101).
         payments: config.sierra.order.registerPayment
           ? [
               {
                 plu: config.sierra.order.paymentPlu,
                 description: config.sierra.order.paymentLabel,
-                unitPrice: credits,
+                unitPrice: subTotal,
               },
             ]
           : [],
+        openStatus: config.sierra.order.openStatus,
+        server: config.sierra.order.server || null,
+        orderType: config.sierra.order.type,
+        routeProducts: config.sierra.order.routeProducts,
       };
 
       logger.debug('Orden mapeada exitosamente', {
         order: orderTicket.order,
         itemsCount: orderTicket.plus.length,
         subTotal,
-        tax,
-        total: credits,
+        orderType: orderTicket.orderType,
       });
 
       return orderTicket;
@@ -93,15 +86,22 @@ class OrderMapperService {
     const customer = uberOrder.customer;
     const name =
       `${customer?.first_name ?? ''} ${customer?.last_name ?? ''}`.trim() || 'Uber Eats';
-    const phone = customer?.phone_number || undefined;
+    const phone = customer?.phone_number || null;
 
     return [
       {
-        clientId: customer?.id || undefined,
+        clientId: customer?.id || null,
         name,
+        address: null,
+        city: null,
+        zipCode: null,
+        email: customer?.email || null,
         telephone: phone,
         mobilPhone: phone,
-        email: customer?.email || undefined,
+        memo1: null,
+        memo2: null,
+        memo3: null,
+        memo4: null,
       },
     ];
   }
@@ -119,13 +119,12 @@ class OrderMapperService {
 
       return {
         plu: this.mapUberItemIdToPlus(item.id, item.title),
-        description: item.title || undefined,
         quantity,
         unitPrice,
         subTotal,
-        tax: 0, // El IVA se maneja a nivel de orden en Sierra
-        comments: item.special_instructions || undefined,
+        comments: item.special_instructions || '',
         subPlus: this.mapCustomizationsToSubPlus(item.customizations),
+        description: item.title || '',
       };
     });
   }
@@ -151,7 +150,7 @@ class OrderMapperService {
           quantity: 1,
           unitPrice: price,
           subTotal: price,
-          tax: 0,
+          comments: '',
         });
       }
     }
@@ -169,40 +168,6 @@ class OrderMapperService {
     // Implementar tabla de equivalencias real cuando se disponga del catalogo final.
     logger.debug(`Mapeando Uber item ${uberItemId} (${itemTitle}) a PLU`);
     return `${uberItemId}`;
-  }
-
-  /**
-   * Nombre legible de la orden para identificarla en el PDV.
-   */
-  private buildOrderName(uberOrder: UberOrderDetails): string {
-    const number = uberOrder.order_number || uberOrder.id.slice(0, 8);
-    const customer = `${uberOrder.customer?.first_name ?? ''} ${
-      uberOrder.customer?.last_name ?? ''
-    }`.trim();
-    return customer ? `Uber #${number} - ${customer}` : `Uber #${number}`;
-  }
-
-  /**
-   * Construye el campo de comentarios de la orden (orderComments de Sierra).
-   * @param uberOrder Orden de Uber
-   * @returns String de comentarios
-   */
-  private buildOrderComments(uberOrder: UberOrderDetails): string {
-    const parts: string[] = [];
-
-    if (uberOrder.special_instructions) {
-      parts.push(`Instrucciones: ${uberOrder.special_instructions}`);
-    }
-
-    const customer = `${uberOrder.customer?.first_name ?? ''} ${
-      uberOrder.customer?.last_name ?? ''
-    }`.trim();
-    if (customer) parts.push(`Cliente: ${customer}`);
-    if (uberOrder.customer?.phone_number) {
-      parts.push(`Tel: ${uberOrder.customer.phone_number}`);
-    }
-
-    return parts.join(' | ');
   }
 }
 
