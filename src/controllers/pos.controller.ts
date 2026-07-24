@@ -133,7 +133,7 @@ class POSController {
         .order-card.pending { border-top: 5px solid #f9a825; }
         .order-card.preparing { border-top: 5px solid #2a5298; }
         .order-card.completed { border-top: 5px solid #06C167; opacity: .85; }
-        .order-card.denied, .order-card.expired { border-top: 5px solid #9e9e9e; opacity: .7; }
+        .order-card.denied, .order-card.expired, .order-card.cancelled { border-top: 5px solid #9e9e9e; opacity: .7; }
         .order-card.error { border-top: 5px solid #f44336; }
 
         .order-header { padding: 15px; border-bottom: 2px solid #f5f5f5; display: flex; justify-content: space-between; align-items: flex-start; }
@@ -147,7 +147,7 @@ class POSController {
         .order-status.pending { background: #fff3cd; color: #b8860b; }
         .order-status.preparing { background: #d6e4ff; color: #1a3a7a; }
         .order-status.completed { background: #c8e6c9; color: #2e7d32; }
-        .order-status.denied, .order-status.expired { background: #eee; color: #777; }
+        .order-status.denied, .order-status.expired, .order-status.cancelled { background: #eee; color: #777; }
         .order-status.error { background: #ffcdd2; color: #c62828; }
 
         .countdown-bar { padding: 8px 15px; background: #fffaf0; border-bottom: 1px solid #f0e6d2; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: #b8860b; font-weight: 600; }
@@ -235,7 +235,7 @@ class POSController {
 
         const STATUS_LABELS = {
             pending: 'Pendiente', preparing: 'En preparación', completed: 'Completada',
-            denied: 'Rechazada', expired: 'Expirada', error: 'Error'
+            denied: 'Rechazada', cancelled: 'Cancelada', expired: 'Expirada', error: 'Error'
         };
 
         function escapeHtml(value) {

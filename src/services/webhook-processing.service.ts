@@ -31,6 +31,11 @@ class WebhookProcessingService {
   // para no crear duplicados si Uber reenvía el mismo webhook (entrega "at-least-once").
   private readonly processingOrders = new Set<string>();
 
+  // IDs de órdenes canceladas en Uber (fuera del POS). Se recuerdan para ignorar
+  // webhooks NEW/notification que lleguen DESPUÉS de la cancelación (Uber entrega
+  // "at-least-once" y sin garantía de orden), y así la orden nunca aparece en el POS.
+  private readonly cancelledOrders = new Set<string>();
+
   /**
    * Procesa un webhook de Uber Eats de forma asíncrona
    * @param webhook Payload del webhook
@@ -58,6 +63,19 @@ class WebhookProcessingService {
     try {
       logger.info(`Iniciando procesamiento de orden Uber: ${uberOrderId}`);
 
+      // Si esta orden ya fue cancelada en Uber, ignoramos cualquier webhook posterior
+      // (p.ej. un NEW/notification que llegue tarde) para que NO aparezca en el POS.
+      if (this.cancelledOrders.has(uberOrderId)) {
+        logger.info(`Orden ${uberOrderId} previamente cancelada en Uber — webhook ignorado`);
+        return { success: true, message: 'Orden cancelada previamente — ignorada', uberOrderId };
+      }
+
+      // Evento de CANCELACIÓN desde Uber (app de Uber Orders / cliente / Restaurant Dashboard).
+      // La orden se canceló fuera del POS, así que no debe llegar ni permanecer en el POS.
+      if (this.isCancellationEvent(webhook)) {
+        return this.handleCancellation(uberOrderId, 'Cancelada en Uber (app de Uber Orders)');
+      }
+
       // Paso 1: Obtener detalles completos de la orden (con reintentos)
       logger.debug('Paso 1: Obteniendo detalles de orden de Uber...');
 
@@ -70,6 +88,13 @@ class WebhookProcessingService {
         logger.warn(`No se pudieron obtener los detalles de la orden ${uberOrderId}, continuando con webhook payload`, detailsError.message);
         obtenerDetallesFallo = true;
         uberOrderDetails = this.createMinimalOrderFromWebhook(uberOrderId, webhook);
+      }
+
+      // Respaldo: aunque el webhook no fuera un evento de cancelación explícito, los detalles
+      // de Uber pueden traer la orden ya CANCELADA. En ese caso tampoco debe llegar al POS.
+      if (this.isCancelledStatus(uberOrderDetails?.status)) {
+        logger.info(`Orden ${uberOrderId} viene CANCELADA desde Uber (status=${uberOrderDetails?.status})`);
+        return this.handleCancellation(uberOrderId, 'Cancelada en Uber (app de Uber Orders)');
       }
 
       // Paso 2: Mapear a formato Sierra (se guarda listo, pero NO se envía hasta Aceptar)
@@ -282,6 +307,64 @@ class WebhookProcessingService {
 
     orderStore.markDeniedAndRemove(uberOrderId, 'Rechazada por el operador');
     return { success: true, message: 'Orden rechazada', uberOrderId };
+  }
+
+  /**
+   * CANCELAR: la orden se canceló en Uber FUERA del POS (app de Uber Orders, el cliente,
+   * o el Restaurant Dashboard). No debe llegar ni permanecer en el POS.
+   *
+   * - La recordamos como cancelada para ignorar webhooks NEW que lleguen después.
+   * - Si ya estaba visible en el POS (pendiente), la marcamos como cancelada y la quitamos.
+   * - Si ya se había creado en Sierra, avisamos: hay que cancelarla manualmente en el PDV
+   *   (Sierra no expone cancelación automática desde este middleware).
+   */
+  private handleCancellation(uberOrderId: string, message: string): ProcessingResult {
+    this.cancelledOrders.add(uberOrderId);
+
+    const existing = orderStore.get(uberOrderId);
+
+    if (existing?.sierraOrderId) {
+      logger.warn(
+        `Orden ${uberOrderId} CANCELADA en Uber pero YA estaba creada en Sierra ` +
+          `(folio ${existing.sierraOrderId}) — requiere cancelación manual en el PDV`
+      );
+      orderStore.markCancelledAndRemove(
+        uberOrderId,
+        `Cancelada en Uber — ya estaba en Sierra (folio ${existing.sierraOrderId}), cancelar manualmente en el PDV`
+      );
+      return {
+        success: true,
+        message: 'Orden cancelada en Uber (ya existía en Sierra: cancelar manualmente)',
+        uberOrderId,
+        sierraOrderId: existing.sierraOrderId,
+      };
+    }
+
+    if (existing) {
+      logger.info(`Orden ${uberOrderId} cancelada en Uber — quitándola del POS`);
+      orderStore.markCancelledAndRemove(uberOrderId, message);
+    } else {
+      logger.info(`Orden ${uberOrderId} cancelada en Uber antes de llegar al POS — no se muestra`);
+    }
+
+    return { success: true, message: 'Orden cancelada en Uber', uberOrderId };
+  }
+
+  /**
+   * Determina si un webhook corresponde a una cancelación, contemplando los distintos
+   * formatos que envía Uber:
+   *   - event_type: 'orders.cancel', 'order.cancelled', 'orders.canceled', ...
+   *   - type: 'CANCELLED' / 'CANCELED' (formato orders.notification en la raíz)
+   *   - meta.status: 'CANCELLED' / 'CANCELED'
+   */
+  private isCancellationEvent(webhook: UberWebhookPayload): boolean {
+    const signals = [webhook.event_type, webhook.type, webhook.meta?.status];
+    return signals.some((s) => typeof s === 'string' && s.toLowerCase().includes('cancel'));
+  }
+
+  /** True si el status de la orden (detalles de Uber) indica cancelación. */
+  private isCancelledStatus(status: unknown): boolean {
+    return typeof status === 'string' && status.toLowerCase().includes('cancel');
   }
 
   /** Calcula la fecha límite para aceptar (placed_at + ventana de Uber). */

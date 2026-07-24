@@ -9,6 +9,7 @@
  *   preparing → aceptada: creada en Sierra + confirmada en Uber
  *   completed → el operador la marcó como completada
  *   denied    → rechazada (se elimina poco después)
+ *   cancelled → cancelada en Uber (app de Uber Orders / cliente), fuera del POS (se elimina)
  *   expired   → no se aceptó dentro del límite de Uber (se elimina)
  *   error     → falló el procesamiento
  */
@@ -45,6 +46,7 @@ export type OrderStatus =
   | 'preparing'
   | 'completed'
   | 'denied'
+  | 'cancelled'
   | 'expired'
   | 'error';
 
@@ -114,10 +116,17 @@ class OrderStore extends EventEmitter {
     setTimeout(() => this.remove(id), this.REMOVE_DELAY);
   }
 
+  /** Marca como cancelada (en Uber, fuera del POS) y la quita tras un breve periodo. */
+  markCancelledAndRemove(id: string, message = 'Cancelada en Uber'): void {
+    if (!this.orders.has(id)) return;
+    this.setStatus(id, 'cancelled', { message });
+    setTimeout(() => this.remove(id), this.REMOVE_DELAY);
+  }
+
   /** Quita las órdenes terminales más antiguas si excedemos el máximo. */
   private trim(): void {
     if (this.orders.size <= this.MAX_ORDERS) return;
-    const terminal: OrderStatus[] = ['completed', 'denied', 'expired', 'error'];
+    const terminal: OrderStatus[] = ['completed', 'denied', 'cancelled', 'expired', 'error'];
     const removable = this.list()
       .reverse()
       .filter((o) => terminal.includes(o.status));
