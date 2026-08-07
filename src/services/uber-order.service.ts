@@ -4,18 +4,18 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
+import { config } from '../config/config';
 import { logger } from '../utils/logger';
 import { uberAuthService } from './uber-auth.service';
-import { UberOrderDetails } from '../interfaces/uber.interface';
+import { UberCallResult, UberOrderDetails } from '../interfaces/uber.interface';
 
 class UberOrderService {
   private readonly axiosInstance: AxiosInstance;
-  private readonly baseUrl = 'https://test-api.uber.com';
 
   constructor() {
     this.axiosInstance = axios.create({
       timeout: 10000,
-      baseURL: this.baseUrl,
+      baseURL: config.uber.apiBaseUrl,
     });
   }
 
@@ -233,52 +233,103 @@ class UberOrderService {
   }
 
   /**
-   * Acepta una orden en Uber — obligatorio dentro de 11.5 min o se auto-cancela.
-   * Endpoint POS Marketplace: POST /v1/eats/orders/{order_id}/accept_pos_order
+   * Ejecuta una llamada autenticada a la API de Uber conservando el código HTTP.
+   * No lanza excepción: devuelve el resultado para que el llamador decida, y para que
+   * el runner de certificación pueda mostrar el status tal cual respondió Uber.
    */
-  async acceptOrder(orderId: string): Promise<void> {
-    logger.info(`Aceptando orden Uber: ${orderId}`);
+  private async call(
+    method: 'get' | 'post' | 'patch',
+    path: string,
+    body?: unknown
+  ): Promise<UberCallResult> {
     const accessToken = await uberAuthService.getAccessToken();
-    const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
 
     try {
-      await this.axiosInstance.post(
-        `/v1/eats/orders/${orderId}/accept_pos_order`,
-        {},
-        { headers }
-      );
-      logger.info(`Orden ${orderId} aceptada en Uber`);
+      const response =
+        method === 'get'
+          ? await this.axiosInstance.get(path, { headers })
+          : await this.axiosInstance[method](path, body ?? {}, { headers });
+
+      logger.info(`Uber ${method.toUpperCase()} ${path} → ${response.status}`);
+      return { ok: true, status: response.status, method, path, data: response.data };
     } catch (error: any) {
-      logger.error(`Error al aceptar orden ${orderId} en Uber`, {
-        status: error.response?.status,
+      const status = error.response?.status ?? 0;
+      logger.error(`Uber ${method.toUpperCase()} ${path} → ${status || 'sin respuesta'}`, {
         data: error.response?.data,
+        message: error.message,
       });
-      // No lanzamos — Sierra ya creó la orden, no queremos revertir por esto
+      if (status === 401) {
+        uberAuthService.invalidateToken();
+      }
+      return {
+        ok: false,
+        status,
+        method,
+        path,
+        data: error.response?.data,
+        error: error.message,
+      };
     }
   }
 
-  /**
-   * Rechaza una orden en Uber.
-   * Endpoint POS Marketplace: POST /v1/eats/orders/{order_id}/deny_pos_order
-   * Sin uso actual — disponible para flujos de rechazo futuros.
-   */
-  async denyOrder(orderId: string, reason: string = 'ITEM_UNAVAILABLE'): Promise<void> {
-    logger.info(`Rechazando orden Uber: ${orderId}`);
-    const accessToken = await uberAuthService.getAccessToken();
+  /** Sustituye {orderId} / {storeId} en las plantillas de ruta configuradas. */
+  private buildPath(template: string, vars: Record<string, string>): string {
+    return template.replace(/\{(\w+)\}/g, (_match, key: string) => vars[key] ?? '');
+  }
 
-    try {
-      await this.axiosInstance.post(
-        `/v1/eats/orders/${orderId}/deny_pos_order`,
-        { reason },
-        { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-      );
-      logger.info(`Orden ${orderId} rechazada en Uber`);
-    } catch (error: any) {
-      logger.error(`Error al rechazar orden ${orderId} en Uber`, {
-        status: error.response?.status,
-        data: error.response?.data,
-      });
-    }
+  /**
+   * Acepta una orden en Uber — obligatorio dentro de 11.5 min o se auto-cancela.
+   * Endpoint POS Marketplace: POST /v1/eats/orders/{order_id}/accept_pos_order
+   */
+  async acceptOrder(orderId: string): Promise<UberCallResult> {
+    logger.info(`Aceptando orden Uber: ${orderId}`);
+    // No propagamos el error: Sierra ya tiene la orden y no queremos revertir por esto.
+    return this.call('post', `/v1/eats/orders/${orderId}/accept_pos_order`, {});
+  }
+
+  /** Rechaza una orden. POST /v1/eats/orders/{order_id}/deny_pos_order */
+  async denyOrder(orderId: string, reason: string = 'ITEM_UNAVAILABLE'): Promise<UberCallResult> {
+    logger.info(`Rechazando orden Uber: ${orderId}`);
+    return this.call('post', `/v1/eats/orders/${orderId}/deny_pos_order`, { reason });
+  }
+
+  /**
+   * Cancela una orden YA aceptada (distinto de denegar, que aplica antes de aceptar).
+   * POST /v1/eats/orders/{order_id}/cancel
+   */
+  async cancelOrder(orderId: string, reason = 'OUT_OF_ITEMS'): Promise<UberCallResult> {
+    logger.info(`Cancelando orden Uber: ${orderId} (motivo: ${reason})`);
+    const path = this.buildPath(config.uber.paths.cancelOrder, { orderId });
+    return this.call('post', path, { reason });
+  }
+
+  /**
+   * Marca la orden como lista para ser recogida por el repartidor.
+   * Ruta configurable (UBER_PATH_ORDER_READY) — sin verificar en la doc pública.
+   */
+  async markOrderReady(orderId: string): Promise<UberCallResult> {
+    logger.info(`Marcando orden ${orderId} como lista en Uber`);
+    const path = this.buildPath(config.uber.paths.orderReady, { orderId });
+    return this.call('post', path, {});
+  }
+
+  /**
+   * Reporta un problema de cumplimiento (producto agotado, sustitución) para que el
+   * cliente decida en la app de Uber Eats.
+   * Ruta configurable (UBER_PATH_RESOLVE_FULFILLMENT) — sin verificar en la doc pública.
+   */
+  async resolveFulfillmentIssue(
+    orderId: string,
+    payload: Record<string, unknown> = {}
+  ): Promise<UberCallResult> {
+    logger.info(`Reportando problema de cumplimiento en orden ${orderId}`);
+    const path = this.buildPath(config.uber.paths.resolveFulfillmentIssue, { orderId });
+    return this.call('post', path, payload);
   }
 }
 

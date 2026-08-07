@@ -24,9 +24,38 @@ export const config = {
     menuPath: process.env.UBER_MENU_PATH || '',
     // Scopes solicitados al obtener el token client_credentials.
     // Incluye los de tienda (eats.store / eats.store.status.write) para poner la tienda online.
-    scopes:
+    //
+    // OJO: pedir un scope que Uber todavía NO concede a la app puede hacer fallar la
+    // petición de token. Por eso los scopes de certificación (p.ej. eats.pos_provisioning,
+    // necesario para Activate Integration) NO van aquí por defecto: se agregan con
+    // UBER_EXTRA_SCOPES una vez que el soporte de Uber los habilite en el client ID.
+    scopes: [
       process.env.UBER_SCOPES ||
-      'eats.order eats.store.orders.read eats.store eats.store.status.write',
+        'eats.order eats.store.orders.read eats.store eats.store.status.write',
+      process.env.UBER_EXTRA_SCOPES || '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim(),
+
+    // Rutas de los endpoints exigidos por Uber para la certificación de producción.
+    // Se dejan configurables porque la documentación pública no expone todas y pueden
+    // cambiar; así se corrigen por variable de entorno sin tocar el código.
+    //   {orderId} y {storeId} se sustituyen en tiempo de ejecución.
+    paths: {
+      // Verificados contra la documentación pública de Uber:
+      posData: process.env.UBER_PATH_POS_DATA || '/v1/eats/stores/{storeId}/pos_data',
+      cancelOrder: process.env.UBER_PATH_CANCEL_ORDER || '/v1/eats/orders/{orderId}/cancel',
+      // SIN VERIFICAR — confirmar con el soporte de Uber y ajustar por env var si dan 404:
+      orderReady:
+        process.env.UBER_PATH_ORDER_READY || '/v1/eats/orders/{orderId}/restaurant_order_ready',
+      resolveFulfillmentIssue:
+        process.env.UBER_PATH_RESOLVE_FULFILLMENT ||
+        '/v1/eats/orders/{orderId}/resolve_fulfillment_issue',
+      createPromotion:
+        process.env.UBER_PATH_CREATE_PROMOTION || '/v1/eats/stores/{storeId}/promotions',
+      reportFiles: process.env.UBER_PATH_REPORT_FILES || '/v1/eats/report-files',
+    },
     // Poner la tienda ONLINE automáticamente al arrancar el servidor.
     // Ojo: cada arranque pide un token. Si Render reinicia seguido, ponlo en false.
     setOnlineOnStartup: process.env.UBER_SET_ONLINE_ON_STARTUP !== 'false',

@@ -5,6 +5,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { webhookProcessingService } from '../services/webhook-processing.service';
+import { certificationService } from '../services/certification.service';
 import { UberWebhookPayload } from '../interfaces/uber.interface';
 
 class UberWebhookController {
@@ -62,6 +63,13 @@ class UberWebhookController {
         eventId: webhook.event_id,
       });
 
+      // Evidencia para la certificación: Uber exige que sus webhooks se reconozcan con 200.
+      certificationService.recordWebhook(
+        webhook.event_type || webhook.type || 'desconocido',
+        webhook.meta?.resource_id || webhook.data?.order_id || webhook.order_id,
+        200
+      );
+
       // Procesar el webhook de forma asíncrona (fire and forget)
       // De esta forma, Uber no espera a que se complete el procesamiento
       webhookProcessingService.processWebhookAsync(webhook);
@@ -113,12 +121,18 @@ class UberWebhookController {
   private isValidPayload(body: any): body is UberWebhookPayload {
     if (!body || typeof body !== 'object') return false;
     // event_id es opcional — algunos formatos de Uber no lo incluyen
-    // Sólo requerimos poder extraer un order_id de alguna forma conocida
     const hasNewFormat = body.meta && typeof body.meta.resource_id === 'string';
     const hasDataFormat = body.data && typeof body.data.order_id === 'string';
     const hasRootOrderId = typeof body.order_id === 'string'; // orders.notification pone order_id en la raíz
-    
-    return hasNewFormat || hasDataFormat || hasRootOrderId;
+
+    // Uber exige que cada webhook suyo se reconozca con 200. Hay eventos legítimos que no
+    // traen order_id en las rutas conocidas (p.ej. órdenes programadas o notificaciones de
+    // tienda); si se rechazan con 400 la certificación falla. Basta con que el cuerpo se
+    // identifique como un evento de Uber para aceptarlo y procesarlo en segundo plano.
+    const looksLikeUberEvent =
+      typeof body.event_type === 'string' || typeof body.event_id === 'string';
+
+    return hasNewFormat || hasDataFormat || hasRootOrderId || looksLikeUberEvent;
   }
 }
 

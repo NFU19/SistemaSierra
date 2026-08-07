@@ -74,6 +74,20 @@ export interface UberTotals {
   currency: string;
 }
 
+/**
+ * Resultado de una llamada a la API de Uber.
+ * Conserva el código HTTP incluso cuando falla, porque la certificación de producción
+ * exige mostrar evidencia del status devuelto por cada endpoint (200/204).
+ */
+export interface UberCallResult {
+  ok: boolean;
+  status: number;
+  method: string;
+  path: string;
+  data?: any;
+  error?: string;
+}
+
 export interface UberOAuthTokenResponse {
   access_token: string;
   token_type: 'Bearer';

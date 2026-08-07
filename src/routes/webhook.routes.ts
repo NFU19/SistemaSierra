@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { uberWebhookController } from '../controllers/uber-webhook.controller';
 import { posController } from '../controllers/pos.controller';
+import { certificationController } from '../controllers/certification.controller';
 import { uberStoreService } from '../services/uber-store.service';
 import { logger } from '../utils/logger';
 
@@ -136,6 +137,31 @@ webhookRoutes.post('/api/uber/store/offline', async (req, res) => {
     });
   }
 });
+
+/**
+ * CERTIFICACIÓN UBER EATS
+ * Panel de evidencia para el proceso de validación de producción.
+ */
+
+/**
+ * GET /certification
+ * Panel HTML con el estado de cada endpoint requerido por Uber
+ */
+webhookRoutes.get('/certification', (req, res) => certificationController.getPanel(req, res));
+
+/**
+ * GET /api/certification
+ * Mismo contenido del panel, en JSON
+ */
+webhookRoutes.get('/api/certification', (req, res) => certificationController.getJSON(req, res));
+
+/**
+ * POST /api/certification/run/:checkId
+ * Ejecuta una verificación concreta (las que modifican datos)
+ */
+webhookRoutes.post('/api/certification/run/:checkId', (req, res) =>
+  certificationController.runCheck(req, res)
+);
 
 /**
  * GET /

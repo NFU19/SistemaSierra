@@ -56,8 +56,27 @@ class WebhookProcessingService {
     // Extraemos el UUID de la orden: formato nuevo (meta.resource_id), formato data, o formato orders.notification (root order_id)
     const uberOrderId = webhook.meta?.resource_id || webhook.data?.order_id || webhook.order_id;
 
+    // Orden PROGRAMADA: Uber avisa con anticipación que el cliente agendó un pedido para más
+    // tarde. No se inyecta a Sierra en este momento — cuando llegue la hora, Uber envía la
+    // notificación normal y ahí sigue el flujo habitual. Sólo se reconoce y se registra.
+    if (this.isScheduledOrderEvent(webhook)) {
+      logger.info(`Notificación de orden PROGRAMADA recibida${uberOrderId ? `: ${uberOrderId}` : ''}`, {
+        event_type: webhook.event_type,
+        scheduled_for: (webhook as any).scheduled_time ?? (webhook as any).place_at ?? 'no especificado',
+      });
+      return {
+        success: true,
+        message: 'Notificación de orden programada reconocida',
+        uberOrderId,
+      };
+    }
+
     if (!uberOrderId) {
-      throw new Error('No se pudo extraer el UUID (orderId) del payload del webhook');
+      logger.warn('Webhook de Uber sin orderId identificable — se reconoce pero no se procesa', {
+        event_type: webhook.event_type,
+        keys: Object.keys(webhook || {}),
+      });
+      return { success: true, message: 'Webhook reconocido sin orden asociada' };
     }
 
     try {
@@ -365,6 +384,20 @@ class WebhookProcessingService {
   /** True si el status de la orden (detalles de Uber) indica cancelación. */
   private isCancelledStatus(status: unknown): boolean {
     return typeof status === 'string' && status.toLowerCase().includes('cancel');
+  }
+
+  /**
+   * Determina si el webhook corresponde a una orden PROGRAMADA (agendada por el cliente
+   * para una hora futura). Se contemplan las variantes conocidas de Uber:
+   *   - event_type: 'orders.scheduled.notification', 'order.scheduled', ...
+   *   - type / meta.status: 'SCHEDULED'
+   * Se excluyen las cancelaciones de órdenes programadas: esas deben tratarse como
+   * cancelación, no como agendamiento.
+   */
+  private isScheduledOrderEvent(webhook: UberWebhookPayload): boolean {
+    if (this.isCancellationEvent(webhook)) return false;
+    const signals = [webhook.event_type, webhook.type, webhook.meta?.status];
+    return signals.some((s) => typeof s === 'string' && s.toLowerCase().includes('schedul'));
   }
 
   /** Calcula la fecha límite para aceptar (placed_at + ventana de Uber). */
