@@ -68,10 +68,16 @@ class CertificationController {
         let detail: string;
         if (check.skipped) {
           detail = this.escape(check.skipped);
-        } else if (check.result?.error && !check.result.ok) {
-          detail = `<code>${this.escape((check.result.method || '').toUpperCase())} ${this.escape(check.result.path || '')}</code><div class="err">${this.escape(check.result.error)}</div>`;
         } else {
-          detail = `<code>${this.escape((check.result?.method || '').toUpperCase())} ${this.escape(check.result?.path || '')}</code>`;
+          const call = `<code>${this.escape((check.result?.method || '').toUpperCase())} ${this.escape(check.result?.path || '')}</code>`;
+          const err =
+            check.result?.error && !check.result.ok
+              ? `<div class="err">${this.escape(check.result.error)}</div>`
+              : '';
+          const ran = check.ranAt
+            ? `<div class="ts">Ejecutado: ${this.escape(check.ranAt)}</div>`
+            : '';
+          detail = call + err + ran;
         }
 
         // Los que necesitan una orden se deshabilitan mientras no haya orderId seleccionado.

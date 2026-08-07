@@ -40,6 +40,8 @@ export interface CertificationCheck {
   requiresOrderId: boolean;
   result?: UberCallResult;
   skipped?: string;
+  /** Cuándo se ejecutó por última vez (ISO), si ya se ejecutó. */
+  ranAt?: string;
 }
 
 export interface WebhookRecord {
@@ -136,6 +138,9 @@ class CertificationService {
   private readonly webhookLog: WebhookRecord[] = [];
   // Registro de órdenes vistas, en orden de aparición (más reciente primero).
   private readonly seenOrders = new Map<string, SeenOrder>();
+  // Último resultado de cada verificación. Sin esto, las que se ejecutan a mano
+  // volverían a "Pendiente" al recargar y no se podría capturar la evidencia junta.
+  private readonly lastResults = new Map<CheckId, { result: UberCallResult; ranAt: string }>();
 
   /** Catálogo de verificaciones disponibles (sin ejecutar). */
   listChecks(): Omit<CertificationCheck, 'result' | 'skipped'>[] {
@@ -223,12 +228,24 @@ class CertificationService {
     const results: CertificationCheck[] = [];
 
     for (const check of CHECKS) {
+      // Si ya se ejecutó antes, se conserva el resultado: la evidencia debe acumularse
+      // para poder capturar todos los endpoints en una sola pantalla.
+      const previous = this.lastResults.get(check.id);
+
       if (check.mutating) {
-        results.push({ ...check, skipped: 'Requiere ejecución manual (modifica datos)' });
+        results.push(
+          previous
+            ? { ...check, result: previous.result, ranAt: previous.ranAt }
+            : { ...check, skipped: 'Requiere ejecución manual (modifica datos)' }
+        );
         continue;
       }
       if (check.requiresOrderId && !orderId) {
-        results.push({ ...check, skipped: 'Requiere un orderId de prueba' });
+        results.push(
+          previous
+            ? { ...check, result: previous.result, ranAt: previous.ranAt }
+            : { ...check, skipped: 'Requiere un orderId de prueba' }
+        );
         continue;
       }
       results.push({ ...check, result: await this.runCheck(check.id, orderId) });
@@ -237,8 +254,19 @@ class CertificationService {
     return results;
   }
 
-  /** Ejecuta una verificación concreta. */
+  /** Ejecuta una verificación y conserva su resultado para la evidencia. */
   async runCheck(id: CheckId, orderId?: string): Promise<UberCallResult> {
+    const result = await this.executeCheck(id, orderId);
+    this.lastResults.set(id, { result, ranAt: new Date().toISOString() });
+    return result;
+  }
+
+  /** Último resultado registrado de una verificación, si ya se ejecutó. */
+  getLastResult(id: CheckId): { result: UberCallResult; ranAt: string } | undefined {
+    return this.lastResults.get(id);
+  }
+
+  private async executeCheck(id: CheckId, orderId?: string): Promise<UberCallResult> {
     logger.info(`[Certificación] Ejecutando verificación: ${id}`);
 
     switch (id) {

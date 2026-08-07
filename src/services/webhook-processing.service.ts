@@ -243,6 +243,10 @@ class WebhookProcessingService {
       sierraOrderId,
       message: 'Aceptada y enviada a Sierra',
     });
+    certificationService.setOrderDisposition(
+      uberOrderId,
+      `Aceptada y creada en Sierra (folio ${sierraOrderId})`
+    );
 
     logger.info(`Orden ${uberOrderId} ACEPTADA`, {
       sierraFolio: sierraResponse.folio,
@@ -290,6 +294,10 @@ class WebhookProcessingService {
         sierraOrderId,
         message: 'Aceptada en Uber y creada en Sierra',
       });
+      certificationService.setOrderDisposition(
+        uberOrderId,
+        `Aceptada en Uber (RD) y creada en Sierra (folio ${sierraOrderId})`
+      );
 
       logger.info(`Orden ${uberOrderId} CREADA en Sierra automáticamente`, {
         sierraFolio: sierraResponse.folio,
