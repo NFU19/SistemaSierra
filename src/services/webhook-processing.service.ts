@@ -11,6 +11,7 @@ import { uberOrderService } from './uber-order.service';
 import { orderMapperService } from './order-mapper.service';
 import { sierraIntegrationService } from './sierra-integration.service';
 import { orderStore, PosOrder } from './event.service';
+import { certificationService } from './certification.service';
 
 // Valores placeholder que indican que el secret aún no se ha configurado de verdad
 const PLACEHOLDER_SECRETS = new Set(['default-secret', 'your-webhook-secret-key', '']);
@@ -160,6 +161,10 @@ class WebhookProcessingService {
       };
 
       orderStore.upsert(pendingOrder);
+      certificationService.setOrderDisposition(
+        uberOrderId,
+        'Pendiente en el POS — esperando al operador'
+      );
 
       logger.info(`Orden ${uberOrderId} PENDIENTE, esperando acción del operador`, {
         items: sierraOrderTicket.plus.length,
@@ -325,6 +330,7 @@ class WebhookProcessingService {
     await uberOrderService.denyOrder(uberOrderId, reason);
 
     orderStore.markDeniedAndRemove(uberOrderId, 'Rechazada por el operador');
+    certificationService.setOrderDisposition(uberOrderId, 'Denegada por el operador');
     return { success: true, message: 'Orden rechazada', uberOrderId };
   }
 
@@ -339,6 +345,7 @@ class WebhookProcessingService {
    */
   private handleCancellation(uberOrderId: string, message: string): ProcessingResult {
     this.cancelledOrders.add(uberOrderId);
+    certificationService.setOrderDisposition(uberOrderId, 'Cancelada en Uber — no se envió al POS');
 
     const existing = orderStore.get(uberOrderId);
 

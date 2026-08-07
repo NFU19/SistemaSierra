@@ -50,6 +50,21 @@ export interface WebhookRecord {
   ackStatus: number;
 }
 
+/**
+ * Orden detectada por el middleware, haya llegado o no al POS.
+ * Es la única forma de recuperar el UUID de órdenes que se filtran antes del POS
+ * (canceladas, denegadas o programadas).
+ */
+export interface SeenOrder {
+  orderId: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /** Tipos de evento recibidos para esta orden. */
+  events: string[];
+  /** Qué hizo el middleware con ella. */
+  disposition?: string;
+}
+
 const CHECKS: Omit<CertificationCheck, 'result' | 'skipped'>[] = [
   {
     id: 'get-integration-details',
@@ -115,8 +130,12 @@ const CHECKS: Omit<CertificationCheck, 'result' | 'skipped'>[] = [
 
 const MAX_WEBHOOK_RECORDS = 50;
 
+const MAX_SEEN_ORDERS = 50;
+
 class CertificationService {
   private readonly webhookLog: WebhookRecord[] = [];
+  // Registro de órdenes vistas, en orden de aparición (más reciente primero).
+  private readonly seenOrders = new Map<string, SeenOrder>();
 
   /** Catálogo de verificaciones disponibles (sin ejecutar). */
   listChecks(): Omit<CertificationCheck, 'result' | 'skipped'>[] {
@@ -128,19 +147,72 @@ class CertificationService {
    * Es la evidencia de "webhooks acknowledged with a 200 from the Partner".
    */
   recordWebhook(eventType: string, orderId: string | undefined, ackStatus: number): void {
+    const event = eventType || 'desconocido';
     this.webhookLog.unshift({
       receivedAt: new Date().toISOString(),
-      eventType: eventType || 'desconocido',
+      eventType: event,
       orderId,
       ackStatus,
     });
     if (this.webhookLog.length > MAX_WEBHOOK_RECORDS) {
       this.webhookLog.length = MAX_WEBHOOK_RECORDS;
     }
+    if (orderId) {
+      this.recordOrderSeen(orderId, event);
+    }
   }
 
   getWebhookLog(): WebhookRecord[] {
     return [...this.webhookLog];
+  }
+
+  /**
+   * Registra que se vio una orden, aunque nunca llegue al POS.
+   * Sin esto, las órdenes canceladas o denegadas desaparecen sin dejar rastro del UUID.
+   */
+  recordOrderSeen(orderId: string, eventType: string): void {
+    const now = new Date().toISOString();
+    const existing = this.seenOrders.get(orderId);
+
+    if (existing) {
+      existing.lastSeenAt = now;
+      if (eventType && !existing.events.includes(eventType)) {
+        existing.events.push(eventType);
+      }
+      return;
+    }
+
+    this.seenOrders.set(orderId, {
+      orderId,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      events: eventType ? [eventType] : [],
+    });
+
+    // Podar las más antiguas (Map conserva el orden de inserción).
+    while (this.seenOrders.size > MAX_SEEN_ORDERS) {
+      const oldest = this.seenOrders.keys().next().value;
+      if (oldest === undefined) break;
+      this.seenOrders.delete(oldest);
+    }
+  }
+
+  /** Anota qué hizo el middleware con la orden (creada, cancelada, ignorada...). */
+  setOrderDisposition(orderId: string, disposition: string): void {
+    const existing = this.seenOrders.get(orderId);
+    if (existing) {
+      existing.disposition = disposition;
+      existing.lastSeenAt = new Date().toISOString();
+      return;
+    }
+    this.recordOrderSeen(orderId, '');
+    const created = this.seenOrders.get(orderId);
+    if (created) created.disposition = disposition;
+  }
+
+  /** Órdenes vistas, de la más reciente a la más antigua. */
+  getSeenOrders(): SeenOrder[] {
+    return [...this.seenOrders.values()].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
   }
 
   /**

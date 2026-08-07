@@ -140,6 +140,10 @@ class CertificationController {
   .picker input { font-family: 'Cascadia Code', Consolas, monospace; font-size: 12px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; width: 340px; max-width: 100%; }
   button.ghost { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
   .err { color: #b91c1c; font-size: 11px; margin-top: 5px; }
+  .ts { font-size: 11px; color: #94a3b8; }
+  td a { text-decoration: none; }
+  td a code { color: #1d4ed8; background: #eff6ff; }
+  td a:hover code { background: #dbeafe; }
 </style>
 </head>
 <body>
@@ -175,6 +179,16 @@ class CertificationController {
     Las verificaciones marcadas como <b>Pendiente</b> modifican datos reales (aceptan, deniegan o
     cancelan una orden) y por eso se ejecutan de forma individual con el botón <b>Ejecutar</b>.
     Para las que requieren una orden, abre esta página con <code>?orderId=UUID</code>.
+  </div>
+
+  <h2>Órdenes detectadas por el middleware</h2>
+  <table>
+    <thead><tr><th>UUID</th><th>Eventos</th><th>Qué pasó con ella</th><th>Último evento</th></tr></thead>
+    <tbody>${this.renderSeenOrders()}</tbody>
+  </table>
+  <div class="note">
+    Incluye órdenes que <b>nunca llegaron al POS</b> (canceladas, denegadas o programadas).
+    Haz clic en un UUID para cargarlo arriba y ejecutar las verificaciones sobre esa orden.
   </div>
 
   <h2>Webhooks recibidos y reconocidos</h2>
@@ -234,6 +248,26 @@ class CertificationController {
 </script>
 </body>
 </html>`;
+  }
+
+  /** Tabla de órdenes vistas por el middleware, hayan llegado o no al POS. */
+  private renderSeenOrders(): string {
+    const orders = certificationService.getSeenOrders();
+    if (!orders.length) {
+      return `<tr><td colspan="4" class="empty">Aún no se detectan órdenes. Genera un pedido de prueba en Uber.</td></tr>`;
+    }
+
+    return orders
+      .map(
+        (o) => `
+        <tr>
+          <td><a href="?orderId=${encodeURIComponent(o.orderId)}"><code>${this.escape(o.orderId)}</code></a></td>
+          <td>${o.events.map((e) => `<code>${this.escape(e)}</code>`).join(' ') || '—'}</td>
+          <td>${this.escape(o.disposition || 'Sin registrar')}</td>
+          <td><span class="ts">${this.escape(o.lastSeenAt)}</span></td>
+        </tr>`
+      )
+      .join('');
   }
 
   /** Opciones del selector: órdenes que el POS tiene en memoria. */
