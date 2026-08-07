@@ -7,7 +7,11 @@ import axios, { AxiosInstance } from 'axios';
 import { config } from '../config/config';
 import { logger } from '../utils/logger';
 import { uberAuthService } from './uber-auth.service';
-import { UberCallResult, UberOrderDetails } from '../interfaces/uber.interface';
+import {
+  UberCallResult,
+  UberDenyReasonCode,
+  UberOrderDetails,
+} from '../interfaces/uber.interface';
 
 class UberOrderService {
   private readonly axiosInstance: AxiosInstance;
@@ -292,10 +296,22 @@ class UberOrderService {
     return this.call('post', `/v1/eats/orders/${orderId}/accept_pos_order`, {});
   }
 
-  /** Rechaza una orden. POST /v1/eats/orders/{order_id}/deny_pos_order */
-  async denyOrder(orderId: string, reason: string = 'ITEM_UNAVAILABLE'): Promise<UberCallResult> {
-    logger.info(`Rechazando orden Uber: ${orderId}`);
-    return this.call('post', `/v1/eats/orders/${orderId}/deny_pos_order`, { reason });
+  /**
+   * Rechaza una orden. POST /v1/eats/orders/{order_id}/deny_pos_order
+   *
+   * OJO con el formato: `reason` es un OBJETO con `code` (enum cerrado) y `explanation`
+   * (texto obligatorio). Mandar un string suelto, o un código fuera del enum, devuelve 400.
+   * Respuesta esperada en caso de éxito: 204.
+   */
+  async denyOrder(
+    orderId: string,
+    code: UberDenyReasonCode = 'ITEM_AVAILABILITY',
+    explanation = 'Producto no disponible en el punto de venta'
+  ): Promise<UberCallResult> {
+    logger.info(`Rechazando orden Uber: ${orderId} (código: ${code})`);
+    return this.call('post', `/v1/eats/orders/${orderId}/deny_pos_order`, {
+      reason: { code, explanation },
+    });
   }
 
   /**

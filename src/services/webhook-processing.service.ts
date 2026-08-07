@@ -4,7 +4,7 @@
  */
 
 import crypto from 'node:crypto';
-import { UberWebhookPayload } from '../interfaces/uber.interface';
+import { UberDenyReasonCode, UberWebhookPayload } from '../interfaces/uber.interface';
 import { config } from '../config/config';
 import { logger } from '../utils/logger';
 import { uberOrderService } from './uber-order.service';
@@ -328,7 +328,10 @@ class WebhookProcessingService {
   /**
    * DENEGAR: rechaza la orden en Uber (deny_pos_order) y la quita del POS.
    */
-  async denyOrder(uberOrderId: string, reason = 'ITEM_UNAVAILABLE'): Promise<ProcessingResult> {
+  async denyOrder(
+    uberOrderId: string,
+    reason: UberDenyReasonCode = 'ITEM_AVAILABILITY'
+  ): Promise<ProcessingResult> {
     const order = orderStore.get(uberOrderId);
     if (!order) {
       throw new Error(`Orden ${uberOrderId} no encontrada`);

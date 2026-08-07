@@ -75,6 +75,23 @@ export interface UberTotals {
 }
 
 /**
+ * Códigos de rechazo aceptados por Uber en deny_pos_order.
+ * Enviar cualquier otro valor (o un string suelto en vez del objeto reason) devuelve 400.
+ */
+export type UberDenyReasonCode =
+  | 'STORE_CLOSED'
+  | 'POS_NOT_READY'
+  | 'POS_OFFLINE'
+  | 'ITEM_AVAILABILITY'
+  | 'MISSING_ITEM'
+  | 'MISSING_INFO'
+  | 'PRICING'
+  | 'CAPACITY'
+  | 'ADDRESS'
+  | 'SPECIAL_INSTRUCTIONS'
+  | 'OTHER';
+
+/**
  * Resultado de una llamada a la API de Uber.
  * Conserva el código HTTP incluso cuando falla, porque la certificación de producción
  * exige mostrar evidencia del status devuelto por cada endpoint (200/204).

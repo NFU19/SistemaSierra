@@ -66,7 +66,8 @@ class POSController {
   /** POST /api/pos/orders/:id/deny — Rechaza en Uber y elimina del POS */
   async denyOrder(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
-    const reason = req.body?.reason || 'ITEM_UNAVAILABLE';
+    // Código del enum de Uber (ver UberDenyReasonCode); cualquier otro valor devuelve 400.
+    const reason = req.body?.reason || 'ITEM_AVAILABILITY';
     try {
       const result = await webhookProcessingService.denyOrder(id, reason);
       res.status(200).json(result);
