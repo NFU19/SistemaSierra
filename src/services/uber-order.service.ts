@@ -321,7 +321,13 @@ class UberOrderService {
   /**
    * Reporta un problema de cumplimiento (producto agotado, sustitución) para que el
    * cliente decida en la app de Uber Eats.
-   * Ruta configurable (UBER_PATH_RESOLVE_FULFILLMENT) — sin verificar en la doc pública.
+   *
+   * Ruta configurable (UBER_PATH_RESOLVE_FULFILLMENT). PENDIENTE DE CONFIRMAR: pertenece a
+   * la "Order Fulfillment API Suite" (la uAPI nueva), cuyas rutas no están publicadas.
+   *
+   * Valores documentados por Uber para el payload:
+   *   issue_type:  FOUND_ITEM | PARTIAL_AVAILABILITY | OUT_OF_ITEM
+   *   action_type: REPLACE_FOR_ME | SUBSTITUTE_ME | REMOVE_ITEM | ALTERNATIVE_ITEM
    */
   async resolveFulfillmentIssue(
     orderId: string,
