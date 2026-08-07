@@ -8,6 +8,7 @@
 
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
+import { orderStore } from '../services/event.service';
 import {
   CertificationCheck,
   CheckId,
@@ -64,12 +65,19 @@ class CertificationController {
             ? `<span class="badge ok">${status}</span>`
             : `<span class="badge fail">${status || 'sin respuesta'}</span>`;
 
-        const detail = check.skipped
-          ? this.escape(check.skipped)
-          : `<code>${this.escape((check.result?.method || '').toUpperCase())} ${this.escape(check.result?.path || '')}</code>`;
+        let detail: string;
+        if (check.skipped) {
+          detail = this.escape(check.skipped);
+        } else if (check.result?.error && !check.result.ok) {
+          detail = `<code>${this.escape((check.result.method || '').toUpperCase())} ${this.escape(check.result.path || '')}</code><div class="err">${this.escape(check.result.error)}</div>`;
+        } else {
+          detail = `<code>${this.escape((check.result?.method || '').toUpperCase())} ${this.escape(check.result?.path || '')}</code>`;
+        }
 
+        // Los que necesitan una orden se deshabilitan mientras no haya orderId seleccionado.
+        const needsOrder = check.requiresOrderId && !orderId;
         const action = check.mutating
-          ? `<button onclick="runCheck('${check.id}', this)">Ejecutar</button>`
+          ? `<button onclick="runCheck('${check.id}', this)"${needsOrder ? ' disabled title="Selecciona primero una orden"' : ''}>Ejecutar</button>`
           : '';
 
         return `
@@ -127,6 +135,11 @@ class CertificationController {
   button:disabled { opacity: .55; cursor: not-allowed; }
   .empty { text-align: center; color: #94a3b8; padding: 22px; }
   .note { font-size: 12px; color: #64748b; margin-top: 10px; line-height: 1.5; }
+  .picker { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; }
+  .picker label { font-size: 13px; margin-right: 10px; }
+  .picker input { font-family: 'Cascadia Code', Consolas, monospace; font-size: 12px; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; width: 340px; max-width: 100%; }
+  button.ghost { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
+  .err { color: #b91c1c; font-size: 11px; margin-top: 5px; }
 </style>
 </head>
 <body>
@@ -140,6 +153,17 @@ class CertificationController {
     <div><b>Scopes:</b> <code>${this.escape(ctx.scopes)}</code></div>
     <div><b>Generado:</b> ${this.escape(ctx.generatedAt)}</div>
     ${orderId ? `<div><b>Order ID:</b> <code>${this.escape(orderId)}</code></div>` : ''}
+  </div>
+
+  <div class="picker">
+    <label for="orderId"><b>Orden de prueba</b></label>
+    <input id="orderId" list="orders" placeholder="UUID de la orden" value="${this.escape(orderId || '')}">
+    <datalist id="orders">${this.renderOrderOptions()}</datalist>
+    <button onclick="loadOrder()">Cargar</button>
+    ${orderId ? '<button class="ghost" onclick="clearOrder()">Quitar</button>' : ''}
+    <div class="note" style="margin-top:8px">
+      ${this.renderOrderHint()}
+    </div>
   </div>
 
   <h2>Endpoints requeridos</h2>
@@ -161,24 +185,45 @@ class CertificationController {
 </div>
 
 <script>
-  const params = new URLSearchParams(location.search);
+  function currentOrderId() {
+    const input = document.getElementById('orderId');
+    return (input && input.value.trim()) || new URLSearchParams(location.search).get('orderId') || '';
+  }
+
+  function loadOrder() {
+    const id = currentOrderId();
+    if (!id) { alert('Escribe o selecciona el UUID de una orden.'); return; }
+    location.search = '?orderId=' + encodeURIComponent(id);
+  }
+
+  function clearOrder() { location.search = ''; }
+
   async function runCheck(id, btn) {
     const original = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Ejecutando...';
     try {
-      const orderId = params.get('orderId') || '';
+      const orderId = currentOrderId();
       const url = '/api/certification/run/' + id + (orderId ? '?orderId=' + encodeURIComponent(orderId) : '');
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await res.json();
-      const status = data.result && data.result.status;
-      const cell = btn.closest('tr').querySelector('td.center');
+      const result = data.result || {};
+      const status = result.status;
       const okRange = status >= 200 && status < 300;
-      cell.innerHTML = '<span class="badge ' + (okRange ? 'ok' : 'fail') + '">' + (status || 'error') + '</span>';
-      const callCell = btn.closest('tr').children[1];
-      if (data.result && data.result.path) {
-        callCell.innerHTML = '<code>' + (data.result.method || '').toUpperCase() + ' ' + data.result.path + '</code>';
+
+      const row = btn.closest('tr');
+      row.querySelector('td.center').innerHTML =
+        '<span class="badge ' + (okRange ? 'ok' : 'fail') + '">' + (status || 'error') + '</span>';
+
+      // Mostrar la llamada real y, si falló, el motivo — sin esto sólo se veía "error".
+      let detail = '';
+      if (result.path && result.path !== '-') {
+        detail = '<code>' + (result.method || '').toUpperCase() + ' ' + result.path + '</code>';
       }
+      if (!okRange && result.error) {
+        detail += '<div class="err">' + result.error + '</div>';
+      }
+      if (detail) row.children[1].innerHTML = detail;
     } catch (e) {
       alert('Error al ejecutar: ' + e.message);
     } finally {
@@ -189,6 +234,31 @@ class CertificationController {
 </script>
 </body>
 </html>`;
+  }
+
+  /** Opciones del selector: órdenes que el POS tiene en memoria. */
+  private renderOrderOptions(): string {
+    return orderStore
+      .list()
+      .map(
+        (o) =>
+          `<option value="${this.escape(o.id)}">#${this.escape(o.orderNumber)} — ${this.escape(o.status)}</option>`
+      )
+      .join('');
+  }
+
+  /** Ayuda contextual: qué órdenes hay disponibles y para qué sirve cada estado. */
+  private renderOrderHint(): string {
+    const orders = orderStore.list();
+    if (!orders.length) {
+      return 'No hay órdenes en memoria. Genera un pedido de prueba en Uber, o pega el UUID manualmente.';
+    }
+    const pending = orders.filter((o) => o.status === 'pending').length;
+    const accepted = orders.filter((o) => o.status === 'preparing').length;
+    return (
+      `${orders.length} orden(es) en memoria — ${pending} pendiente(s), ${accepted} aceptada(s). ` +
+      'Deny requiere una orden <b>pendiente</b>; Cancel, Mark Ready y Resolve requieren una <b>aceptada</b>.'
+    );
   }
 
   private escape(value: unknown): string {
