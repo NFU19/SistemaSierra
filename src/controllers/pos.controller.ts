@@ -97,146 +97,241 @@ class POSController {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POS - Órdenes Uber Eats</title>
+    <title>Punto de Venta — Sistema Sierra</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #eff2f7;
+            --surface: #ffffff;
+            --border: #dde3ec;
+            --border-soft: #eef1f6;
+            --text: #16202e;
+            --text-muted: #6b7889;
+            --text-faint: #98a3b3;
+            --primary: #1b4c8c;
+            --primary-soft: #eaf1fa;
+            --amber: #a86a00;
+            --amber-soft: #fdf3e2;
+            --green: #14714a;
+            --green-soft: #e5f4ec;
+            --red: #b3261e;
+            --red-soft: #fdecea;
+            --slate: #5c6675;
+            --slate-soft: #eef1f5;
+        }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            min-height: 100vh; padding: 20px; color: #333;
+            font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg); min-height: 100vh; padding: 28px 24px; color: var(--text);
+            -webkit-font-smoothing: antialiased;
         }
-        .container { max-width: 1280px; margin: 0 auto; }
+        .container { max-width: 1320px; margin: 0 auto; }
+        svg { display: block; flex-shrink: 0; }
+
         header {
-            background: white; padding: 20px; border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px;
-            display: flex; justify-content: space-between; align-items: center;
+            background: var(--surface); padding: 18px 24px; border-radius: 12px;
+            border: 1px solid var(--border); margin-bottom: 20px;
+            display: flex; justify-content: space-between; align-items: center; gap: 16px;
         }
-        header h1 { color: #2a5298; font-size: 26px; }
-        .status { display: flex; align-items: center; gap: 10px; font-weight: bold; }
-        .status-indicator { width: 12px; height: 12px; border-radius: 50%; animation: pulse 2s infinite; }
-        .status-indicator.connected { background: #06C167; }
-        .status-indicator.disconnected { background: #f44336; animation: none; }
-        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.5;} }
+        .brand { display: flex; align-items: center; gap: 14px; }
+        .brand-mark {
+            width: 42px; height: 42px; border-radius: 10px; background: var(--primary);
+            color: #fff; display: flex; align-items: center; justify-content: center;
+        }
+        .brand h1 { font-size: 19px; font-weight: 650; letter-spacing: -.2px; }
+        .brand p { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 
-        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: white; padding: 15px; border-radius: 10px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .stat-card h3 { color: #666; font-size: 12px; text-transform: uppercase; margin-bottom: 10px; }
-        .stat-card .number { font-size: 28px; font-weight: bold; color: #2a5298; }
+        .status {
+            display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600;
+            padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border);
+            background: var(--green-soft); color: var(--green);
+        }
+        .status.offline { background: var(--red-soft); color: var(--red); }
+        .status-indicator { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+        .status.offline .status-indicator { animation: none; }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
 
-        .orders-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); gap: 18px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
+        .stat-card {
+            background: var(--surface); padding: 16px 18px; border-radius: 12px;
+            border: 1px solid var(--border); display: flex; align-items: center; gap: 14px;
+        }
+        .stat-icon { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+        .stat-icon.amber { background: var(--amber-soft); color: var(--amber); }
+        .stat-icon.blue { background: var(--primary-soft); color: var(--primary); }
+        .stat-icon.green { background: var(--green-soft); color: var(--green); }
+        .stat-icon.slate { background: var(--slate-soft); color: var(--slate); }
+        .stat-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .stat-meta h3 { font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); }
+        .stat-meta .number { font-size: 23px; font-weight: 680; letter-spacing: -.5px; line-height: 1.15; }
+
+        .orders-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(392px, 1fr)); gap: 18px; align-items: start; }
         .order-card {
-            background: white; border-radius: 10px; overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.12);
-            transition: transform .2s ease, box-shadow .2s ease; animation: slideIn .4s ease;
+            background: var(--surface); border-radius: 12px; overflow: hidden;
+            border: 1px solid var(--border); border-top: 3px solid var(--slate);
+            transition: box-shadow .18s ease; animation: slideIn .3s ease;
         }
-        @keyframes slideIn { from{transform:translateY(20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
-        .order-card:hover { transform: translateY(-4px); box-shadow: 0 8px 22px rgba(0,0,0,0.16); }
-        .order-card.pending { border-top: 5px solid #f9a825; }
-        .order-card.preparing { border-top: 5px solid #2a5298; }
-        .order-card.completed { border-top: 5px solid #06C167; opacity: .85; }
-        .order-card.denied, .order-card.expired, .order-card.cancelled { border-top: 5px solid #9e9e9e; opacity: .7; }
-        .order-card.error { border-top: 5px solid #f44336; }
+        @keyframes slideIn { from{transform:translateY(10px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+        .order-card:hover { box-shadow: 0 6px 20px rgba(22,32,46,.09); }
+        .order-card.pending   { border-top-color: #c8860d; }
+        .order-card.preparing { border-top-color: var(--primary); }
+        .order-card.completed { border-top-color: var(--green); }
+        .order-card.denied, .order-card.expired, .order-card.cancelled { border-top-color: #aab3c0; }
+        .order-card.error     { border-top-color: var(--red); }
 
-        .order-header { padding: 15px; border-bottom: 2px solid #f5f5f5; display: flex; justify-content: space-between; align-items: flex-start; }
-        .order-header-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-        .uber-badge { background: #06C167; color: white; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: .5px; }
-        .order-number { font-size: 18px; font-weight: 800; color: #111; }
-        .order-time { font-size: 12px; color: #999; }
-        .order-uuid { font-size: 10px; color: #bbb; font-family: monospace; margin-top: 2px; }
+        .order-header { padding: 16px 18px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .order-header-top { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
+        .platform-badge {
+            font-size: 9.5px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase;
+            padding: 3px 8px; border-radius: 4px; background: #0d1b2a; color: #fff;
+        }
+        .order-number { font-size: 17px; font-weight: 680; letter-spacing: -.3px; }
+        .order-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+        .order-uuid { font-size: 10px; color: var(--text-faint); font-family: ui-monospace, Consolas, monospace; margin-top: 3px; }
 
-        .order-status { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; white-space: nowrap; }
-        .order-status.pending { background: #fff3cd; color: #b8860b; }
-        .order-status.preparing { background: #d6e4ff; color: #1a3a7a; }
-        .order-status.completed { background: #c8e6c9; color: #2e7d32; }
-        .order-status.denied, .order-status.expired, .order-status.cancelled { background: #eee; color: #777; }
-        .order-status.error { background: #ffcdd2; color: #c62828; }
+        .order-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; }
+        .order-status.pending { background: var(--amber-soft); color: var(--amber); }
+        .order-status.preparing { background: var(--primary-soft); color: var(--primary); }
+        .order-status.completed { background: var(--green-soft); color: var(--green); }
+        .order-status.denied, .order-status.expired, .order-status.cancelled { background: var(--slate-soft); color: var(--slate); }
+        .order-status.error { background: var(--red-soft); color: var(--red); }
 
-        .countdown-bar { padding: 8px 15px; background: #fffaf0; border-bottom: 1px solid #f0e6d2; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: #b8860b; font-weight: 600; }
-        .countdown-bar.urgent { background: #ffebee; color: #c62828; }
-        .countdown-time { font-family: monospace; font-size: 16px; font-weight: 800; }
+        .countdown-bar { padding: 9px 18px; background: var(--amber-soft); border-bottom: 1px solid #f2e6ce; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 12.5px; color: var(--amber); font-weight: 600; }
+        .countdown-bar.urgent { background: var(--red-soft); color: var(--red); border-bottom-color: #f7d9d6; }
+        .countdown-time { font-family: ui-monospace, Consolas, monospace; font-size: 15px; font-weight: 700; letter-spacing: -.3px; }
 
-        .order-body { padding: 15px; }
-        .order-items h4 { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-        .item { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f2f2f2; gap: 10px; }
-        .item:last-child { border-bottom: none; }
-        .item-main { display: flex; align-items: flex-start; gap: 10px; flex: 1; }
-        .item-qty-badge { background: #2a5298; color: white; font-weight: 700; font-size: 13px; min-width: 30px; height: 26px; padding: 0 6px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .item-info { display: flex; flex-direction: column; gap: 2px; }
-        .item-name { font-size: 14px; font-weight: 600; color: #222; line-height: 1.3; }
-        .item-plu { font-size: 11px; color: #999; font-family: monospace; }
-        .item-mods { font-size: 12px; color: #e67e22; background: #fff6ec; padding: 3px 7px; border-radius: 4px; margin-top: 3px; line-height: 1.3; }
+        .order-body { padding: 16px 18px; }
+        .section-label { font-size: 10.5px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+        .item { display: flex; justify-content: space-between; align-items: flex-start; padding: 11px 0; border-bottom: 1px solid var(--border-soft); gap: 12px; }
+        .item:first-of-type { padding-top: 0; }
+        .item:last-child { border-bottom: none; padding-bottom: 0; }
+        .item-main { display: flex; align-items: flex-start; gap: 11px; flex: 1; min-width: 0; }
+        .item-qty-badge { background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 12.5px; min-width: 30px; height: 25px; padding: 0 7px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+        .item-name { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+        .item-plu { font-size: 11px; color: var(--text-faint); font-family: ui-monospace, Consolas, monospace; }
+        .item-mods { font-size: 11.5px; color: #8a5a12; background: #fdf6ea; border-left: 2px solid #e0b877; padding: 5px 8px; border-radius: 3px; margin-top: 4px; line-height: 1.4; }
         .item-prices { text-align: right; flex-shrink: 0; }
-        .item-price { font-weight: 700; color: #111; font-size: 14px; display: block; }
-        .item-unit { font-size: 11px; color: #aaa; display: block; }
+        .item-price { font-weight: 650; font-size: 13.5px; display: block; }
+        .item-unit { font-size: 11px; color: var(--text-faint); display: block; margin-top: 1px; }
 
-        .order-totals { background: #f9f9f9; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-top: 12px; }
-        .total-row { display: flex; justify-content: space-between; margin: 4px 0; }
-        .total-row.subtotal, .total-row.tax, .total-row.delivery { color: #666; }
-        .total-row.promotion span:last-child { color: #06C167; }
-        .total-row.total { font-weight: bold; color: #2a5298; font-size: 16px; padding-top: 6px; border-top: 1px solid #ddd; margin-top: 6px; }
+        .order-totals { background: #f7f9fc; border: 1px solid var(--border-soft); padding: 12px 14px; border-radius: 9px; font-size: 12.5px; margin-top: 14px; }
+        .total-row { display: flex; justify-content: space-between; margin: 5px 0; color: var(--text-muted); }
+        .total-row.promotion span:last-child { color: var(--green); }
+        .total-row.total { font-weight: 700; color: var(--text); font-size: 15px; padding-top: 9px; border-top: 1px solid var(--border); margin-top: 9px; }
 
-        .order-customer { background: #f0f7ff; padding: 12px; border-radius: 8px; margin-top: 12px; }
-        .customer-grid { display: flex; flex-direction: column; gap: 6px; }
-        .customer-grid .row { display: flex; align-items: center; gap: 8px; }
-        .customer-grid .label { font-size: 11px; color: #888; text-transform: uppercase; min-width: 65px; }
-        .customer-grid .value { font-size: 13px; color: #333; font-weight: 600; }
+        .order-customer { border: 1px solid var(--border-soft); padding: 12px 14px; border-radius: 9px; margin-top: 12px; }
+        .customer-grid { display: flex; flex-direction: column; gap: 8px; }
+        .customer-grid .row { display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
+        .customer-grid .value { font-size: 12.5px; color: var(--text); font-weight: 600; }
 
-        .error-detail { background: #ffebee; padding: 10px; border-left: 3px solid #f44336; border-radius: 3px; font-size: 12px; color: #c62828; word-break: break-word; margin-top: 10px; }
+        .error-detail { background: var(--red-soft); padding: 10px 12px; border-left: 3px solid var(--red); border-radius: 4px; font-size: 12px; color: var(--red); word-break: break-word; margin-top: 12px; line-height: 1.45; }
 
-        .actions { display: flex; gap: 10px; padding: 15px; border-top: 1px solid #f0f0f0; }
-        .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: filter .15s ease, transform .05s ease; }
-        .btn:active { transform: scale(.98); }
-        .btn:disabled { opacity: .6; cursor: not-allowed; }
-        .btn-accept { background: #06C167; color: white; }
-        .btn-deny { background: #fff; color: #c62828; border: 2px solid #f3c0c0; }
-        .btn-complete { background: #2a5298; color: white; }
-        .btn:hover:not(:disabled) { filter: brightness(1.05); }
+        .actions { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border-soft); background: #fbfcfe; }
+        .btn { flex: 1; padding: 11px 14px; border: 1px solid transparent; border-radius: 8px; font-size: 13.5px; font-weight: 620; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background .15s ease, border-color .15s ease; font-family: inherit; }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-accept { background: var(--green); color: #fff; }
+        .btn-accept:hover:not(:disabled) { background: #0f5c3c; }
+        .btn-deny { background: var(--surface); color: var(--red); border-color: #f0cdca; }
+        .btn-deny:hover:not(:disabled) { background: var(--red-soft); }
+        .btn-complete { background: var(--primary); color: #fff; }
+        .btn-complete:hover:not(:disabled) { background: #163f74; }
 
-        .empty-state { grid-column: 1 / -1; text-align: center; padding: 50px 20px; color: white; }
-        .empty-state h2 { font-size: 24px; margin-bottom: 10px; }
-        .empty-state p { font-size: 14px; opacity: .85; }
+        .empty-state { grid-column: 1 / -1; text-align: center; padding: 64px 24px; background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; }
+        .empty-state .empty-icon { width: 52px; height: 52px; border-radius: 12px; background: var(--slate-soft); color: var(--text-faint); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+        .empty-state h2 { font-size: 16px; font-weight: 650; margin-bottom: 6px; }
+        .empty-state p { font-size: 13px; color: var(--text-muted); }
 
-        @media (max-width: 768px) {
-            .stats { grid-template-columns: repeat(2, 1fr); }
+        @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 640px) {
+            body { padding: 16px 14px; }
             .orders-container { grid-template-columns: 1fr; }
-            header { flex-direction: column; gap: 15px; text-align: center; }
+            header { flex-direction: column; align-items: flex-start; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🛎️ POS - Sistema Sierra</h1>
-            <div class="status">
-                <span class="status-indicator connected" id="status-indicator"></span>
+            <div class="brand">
+                <div class="brand-mark">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9h18M3 9l1.5-4.5A2 2 0 0 1 6.4 3h11.2a2 2 0 0 1 1.9 1.5L21 9M3 9v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9"/>
+                        <path d="M9 13h6"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>Punto de Venta — Sistema Sierra</h1>
+                    <p>Órdenes en línea en tiempo real</p>
+                </div>
+            </div>
+            <div class="status" id="status-pill">
+                <span class="status-indicator" id="status-indicator"></span>
                 <span id="status-text">Conectado</span>
             </div>
         </header>
 
         <div class="stats">
-            <div class="stat-card"><h3>Pendientes</h3><div class="number" id="stat-pending" style="color:#f9a825;">0</div></div>
-            <div class="stat-card"><h3>En Preparación</h3><div class="number" id="stat-preparing">0</div></div>
-            <div class="stat-card"><h3>Completadas</h3><div class="number" id="stat-completed" style="color:#06C167;">0</div></div>
-            <div class="stat-card"><h3>Monto Activo</h3><div class="number" id="stat-amount">$0.00</div></div>
-        </div>
-
-        <div class="orders-container" id="orders-container">
-            <div class="empty-state">
-                <h2>Esperando órdenes...</h2>
-                <p>Las órdenes de Uber Eats aparecerán aquí en tiempo real</p>
+            <div class="stat-card">
+                <div class="stat-icon amber">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                </div>
+                <div class="stat-meta"><h3>Pendientes</h3><div class="number" id="stat-pending">0</div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon blue">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M5 20a7 7 0 0 1 14 0"/><path d="M9 6.5c0-1 1.5-1.5 1.5-3M13 6.5c0-1 1.5-1.5 1.5-3"/></svg>
+                </div>
+                <div class="stat-meta"><h3>En preparación</h3><div class="number" id="stat-preparing">0</div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.1V12a9 9 0 1 1-5.3-8.2"/><path d="m9 11 3 3 9-9"/></svg>
+                </div>
+                <div class="stat-meta"><h3>Completadas</h3><div class="number" id="stat-completed">0</div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon slate">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+                </div>
+                <div class="stat-meta"><h3>Monto activo</h3><div class="number" id="stat-amount">$0.00</div></div>
             </div>
         </div>
+
+        <div class="orders-container" id="orders-container"></div>
     </div>
 
     <script>
         let orders = [];
-        const statusIndicator = document.getElementById('status-indicator');
+        const statusPill = document.getElementById('status-pill');
         const statusText = document.getElementById('status-text');
         const ordersContainer = document.getElementById('orders-container');
 
         const STATUS_LABELS = {
             pending: 'Pendiente', preparing: 'En preparación', completed: 'Completada',
             denied: 'Rechazada', cancelled: 'Cancelada', expired: 'Expirada', error: 'Error'
+        };
+
+        // Iconos SVG en línea (sin dependencias externas, trazo heredando el color del contenedor)
+        const svg = (paths, size) => '<svg width="' + (size || 14) + '" height="' + (size || 14) +
+            '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+            'stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+
+        const ICONS = {
+            clock:    svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+            check:    svg('<path d="m5 12 5 5L20 7"/>'),
+            close:    svg('<path d="M18 6 6 18M6 6l12 12"/>'),
+            checkAll: svg('<path d="M21 11.1V12a9 9 0 1 1-5.3-8.2"/><path d="m9 11 3 3 9-9"/>'),
+            user:     svg('<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/>'),
+            phone:    svg('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>'),
+            alert:    svg('<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>'),
+            ban:      svg('<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>'),
+            inbox:    svg('<path d="M3 12h5l2 3h4l2-3h5"/><path d="M5.5 5h13l2.5 7v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Z"/>', 26)
+        };
+
+        // Icono que acompaña a cada estado en la etiqueta de la tarjeta
+        const STATUS_ICONS = {
+            pending: ICONS.clock, preparing: ICONS.clock, completed: ICONS.check,
+            denied: ICONS.ban, cancelled: ICONS.ban, expired: ICONS.ban, error: ICONS.alert
         };
 
         function escapeHtml(value) {
@@ -298,8 +393,8 @@ class POSController {
             if (!d || !d.customer || (!d.customer.name && !d.customer.phone)) return '';
             return \`
                 <div class="order-customer"><div class="customer-grid">
-                    <div class="row"><span class="label">Cliente</span><span class="value">\${escapeHtml(d.customer.name)}</span></div>
-                    \${d.customer.phone ? '<div class="row"><span class="label">Teléfono</span><span class="value">' + escapeHtml(d.customer.phone) + '</span></div>' : ''}
+                    <div class="row">\${ICONS.user}<span class="value">\${escapeHtml(d.customer.name)}</span></div>
+                    \${d.customer.phone ? '<div class="row">' + ICONS.phone + '<span class="value">' + escapeHtml(d.customer.phone) + '</span></div>' : ''}
                 </div></div>\`;
         }
 
@@ -307,19 +402,19 @@ class POSController {
             if (order.status === 'pending') {
                 return \`
                     <div class="actions">
-                        <button class="btn btn-deny" onclick="denyOrder('\${order.id}', this)">✕ Denegar</button>
-                        <button class="btn btn-accept" onclick="acceptOrder('\${order.id}', this)">✓ Aceptar</button>
+                        <button class="btn btn-deny" onclick="denyOrder('\${order.id}', this)">\${ICONS.close} Denegar</button>
+                        <button class="btn btn-accept" onclick="acceptOrder('\${order.id}', this)">\${ICONS.check} Aceptar</button>
                     </div>\`;
             }
             if (order.status === 'preparing') {
-                return \`<div class="actions"><button class="btn btn-complete" onclick="completeOrder('\${order.id}', this)">Marcar como completada</button></div>\`;
+                return \`<div class="actions"><button class="btn btn-complete" onclick="completeOrder('\${order.id}', this)">\${ICONS.checkAll} Marcar como completada</button></div>\`;
             }
             return '';
         }
 
         function countdownHTML(order) {
             if (order.status !== 'pending' || !order.deadline) return '';
-            return \`<div class="countdown-bar" data-deadline="\${order.deadline}">⏱ Aceptar antes de: <span class="countdown-time">--:--</span></div>\`;
+            return \`<div class="countdown-bar" data-deadline="\${order.deadline}">\${ICONS.clock}<span>Aceptar antes de</span><span class="countdown-time">--:--</span></div>\`;
         }
 
         function createOrderCard(order) {
@@ -336,17 +431,17 @@ class POSController {
                 <div class="order-header">
                     <div>
                         <div class="order-header-top">
-                            <span class="uber-badge">UBER EATS</span>
+                            <span class="platform-badge">Uber Eats</span>
                             <span class="order-number">#\${escapeHtml(orderNumber)}</span>
                         </div>
-                        <div class="order-time">\${formatTime(order.receivedAt)}</div>
+                        <div class="order-meta">\${ICONS.clock}<span>\${formatTime(order.receivedAt)}</span></div>
                         <div class="order-uuid">\${escapeHtml(order.id || '')}</div>
                     </div>
-                    <div class="order-status \${order.status}">\${STATUS_LABELS[order.status] || order.status}</div>
+                    <div class="order-status \${order.status}">\${STATUS_ICONS[order.status] || ''}\${STATUS_LABELS[order.status] || order.status}</div>
                 </div>
                 \${countdownHTML(order)}
                 <div class="order-body">
-                    \${items ? '<div class="order-items"><h4>Productos</h4>' + items + '</div>' : ''}
+                    \${items ? '<div class="section-label">Productos</div>' + items : ''}
                     \${items ? '<div class="order-totals">' + totalsHTML(d) + '</div>' : ''}
                     \${customerHTML(d)}
                     \${errorHTML}
@@ -357,7 +452,12 @@ class POSController {
 
         function renderOrders() {
             if (!orders.length) {
-                ordersContainer.innerHTML = '<div class="empty-state"><h2>Esperando órdenes...</h2><p>Las órdenes de Uber Eats aparecerán aquí en tiempo real</p></div>';
+                ordersContainer.innerHTML =
+                    '<div class="empty-state">' +
+                    '<div class="empty-icon">' + ICONS.inbox + '</div>' +
+                    '<h2>Sin órdenes activas</h2>' +
+                    '<p>Las órdenes entrantes se mostrarán aquí en tiempo real</p>' +
+                    '</div>';
                 updateStats();
                 return;
             }
@@ -384,7 +484,8 @@ class POSController {
             const card = btn.closest('.order-card');
             const buttons = card ? card.querySelectorAll('.btn') : [btn];
             buttons.forEach(b => b.disabled = true);
-            const original = btn.textContent;
+            // innerHTML, no textContent: los botones contienen un icono SVG que se perdería.
+            const original = btn.innerHTML;
             btn.textContent = 'Procesando...';
             try {
                 const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -394,7 +495,7 @@ class POSController {
             } catch (e) {
                 alert(errMsg + ': ' + e.message);
                 buttons.forEach(b => b.disabled = false);
-                btn.textContent = original;
+                btn.innerHTML = original;
             }
         }
 
@@ -407,8 +508,8 @@ class POSController {
 
         function connectSSE() {
             const es = new EventSource('/api/pos/stream');
-            es.onopen = () => { statusIndicator.className = 'status-indicator connected'; statusText.textContent = 'Conectado'; };
-            es.onerror = () => { statusIndicator.className = 'status-indicator disconnected'; statusText.textContent = 'Reconectando...'; es.close(); setTimeout(connectSSE, 3000); };
+            es.onopen = () => { statusPill.className = 'status'; statusText.textContent = 'Conectado'; };
+            es.onerror = () => { statusPill.className = 'status offline'; statusText.textContent = 'Reconectando...'; es.close(); setTimeout(connectSSE, 3000); };
             es.onmessage = (event) => {
                 if (event.data.startsWith(':')) return;
                 try {
