@@ -77,7 +77,8 @@ class CertificationController {
           const ran = check.ranAt
             ? `<div class="ts">Ejecutado: ${this.escape(check.ranAt)}</div>`
             : '';
-          detail = call + err + ran;
+          // Uber exige que la evidencia incluya endpoint, status Y cuerpo de la respuesta.
+          detail = call + err + this.renderBody(check.result) + ran;
         }
 
         // Los que necesitan una orden se deshabilitan mientras no haya orderId seleccionado.
@@ -147,6 +148,8 @@ class CertificationController {
   button.ghost { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
   .err { color: #b91c1c; font-size: 11px; margin-top: 5px; }
   .ts { font-size: 11px; color: #94a3b8; }
+  pre.body { background: #0f172a; color: #e2e8f0; font-family: 'Cascadia Code', Consolas, monospace; font-size: 11px; line-height: 1.45; padding: 9px 11px; border-radius: 6px; margin-top: 6px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  pre.body.empty-body { background: #f1f5f9; color: #64748b; font-style: italic; }
   td a { text-decoration: none; }
   td a code { color: #1d4ed8; background: #eff6ff; }
   td a:hover code { background: #dbeafe; }
@@ -205,6 +208,13 @@ class CertificationController {
 </div>
 
 <script>
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .split('&').join('&amp;')
+      .split('<').join('&lt;')
+      .split('>').join('&gt;');
+  }
+
   function currentOrderId() {
     const input = document.getElementById('orderId');
     return (input && input.value.trim()) || new URLSearchParams(location.search).get('orderId') || '';
@@ -241,8 +251,19 @@ class CertificationController {
         detail = '<code>' + (result.method || '').toUpperCase() + ' ' + result.path + '</code>';
       }
       if (!okRange && result.error) {
-        detail += '<div class="err">' + result.error + '</div>';
+        detail += '<div class="err">' + esc(result.error) + '</div>';
       }
+      // Uber exige el cuerpo de la respuesta en la evidencia.
+      if (result.data !== undefined && result.data !== null && result.data !== '') {
+        let body;
+        try { body = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2); }
+        catch (e) { body = String(result.data); }
+        if (body.length > 1200) body = body.slice(0, 1200) + '\n… (recortado)';
+        detail += '<pre class="body">' + esc(body) + '</pre>';
+      } else if (status === 204) {
+        detail += '<pre class="body empty-body">204 No Content — sin cuerpo de respuesta</pre>';
+      }
+      detail += '<div class="ts">Ejecutado: ' + new Date().toISOString() + '</div>';
       if (detail) row.children[1].innerHTML = detail;
     } catch (e) {
       alert('Error al ejecutar: ' + e.message);
@@ -254,6 +275,33 @@ class CertificationController {
 </script>
 </body>
 </html>`;
+  }
+
+  /**
+   * Cuerpo de la respuesta de Uber. Es obligatorio en la evidencia de certificación
+   * ("include the endpoint, status code, and response body in your screenshots").
+   * Un 204 no lleva cuerpo: se indica explícitamente para que no parezca un dato faltante.
+   */
+  private renderBody(result?: CertificationCheck['result']): string {
+    if (!result) return '';
+
+    if (result.data === undefined || result.data === null || result.data === '') {
+      return result.status === 204
+        ? `<pre class="body empty-body">204 No Content — sin cuerpo de respuesta</pre>`
+        : '';
+    }
+
+    let text: string;
+    try {
+      text = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2);
+    } catch {
+      text = String(result.data);
+    }
+
+    // Recortar respuestas largas para que la captura siga siendo legible.
+    const MAX = 1200;
+    const clipped = text.length > MAX ? `${text.slice(0, MAX)}\n… (recortado)` : text;
+    return `<pre class="body">${this.escape(clipped)}</pre>`;
   }
 
   /** Tabla de órdenes vistas por el middleware, hayan llegado o no al POS. */
