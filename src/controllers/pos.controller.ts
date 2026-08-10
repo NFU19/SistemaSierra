@@ -100,24 +100,31 @@ class POSController {
     <title>Punto de Venta — Sistema Sierra</title>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        /* Paleta alineada a la identidad de Sistemas Sierra: azul marino corporativo,
+           superficies blancas, grises de apoyo y esquinas rectas (radio mínimo).
+           Para ajustar la marca basta con cambiar --primary y --primary-dark. */
         :root {
-            --bg: #eff2f7;
+            --bg: #f4f6f8;
             --surface: #ffffff;
-            --border: #dde3ec;
-            --border-soft: #eef1f6;
-            --text: #16202e;
-            --text-muted: #6b7889;
-            --text-faint: #98a3b3;
-            --primary: #1b4c8c;
-            --primary-soft: #eaf1fa;
-            --amber: #a86a00;
-            --amber-soft: #fdf3e2;
-            --green: #14714a;
-            --green-soft: #e5f4ec;
-            --red: #b3261e;
-            --red-soft: #fdecea;
-            --slate: #5c6675;
-            --slate-soft: #eef1f5;
+            --border: #d9dfe6;
+            --border-soft: #edf0f4;
+            --text: #1a2536;
+            --text-muted: #61707f;
+            --text-faint: #93a0ad;
+            --primary: #17293f;
+            --primary-dark: #0f1c2e;
+            --primary-soft: #e8ecf1;
+            --accent: #1f4e79;
+            --amber: #9a6300;
+            --amber-soft: #fbf2e0;
+            --green: #14654a;
+            --green-soft: #e3f1ea;
+            --red: #a82820;
+            --red-soft: #fbeae8;
+            --slate: #59646f;
+            --slate-soft: #edf0f3;
+            --radius: 4px;
+            --radius-lg: 6px;
         }
         body {
             font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -128,13 +135,13 @@ class POSController {
         svg { display: block; flex-shrink: 0; }
 
         header {
-            background: var(--surface); padding: 18px 24px; border-radius: 12px;
+            background: var(--surface); padding: 18px 24px; border-radius: var(--radius-lg);
             border: 1px solid var(--border); margin-bottom: 20px;
             display: flex; justify-content: space-between; align-items: center; gap: 16px;
         }
         .brand { display: flex; align-items: center; gap: 14px; }
         .brand-mark {
-            width: 42px; height: 42px; border-radius: 10px; background: var(--primary);
+            width: 42px; height: 42px; border-radius: var(--radius); background: var(--primary);
             color: #fff; display: flex; align-items: center; justify-content: center;
         }
         .brand h1 { font-size: 19px; font-weight: 650; letter-spacing: -.2px; }
@@ -152,12 +159,12 @@ class POSController {
 
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
         .stat-card {
-            background: var(--surface); padding: 16px 18px; border-radius: 12px;
+            background: var(--surface); padding: 16px 18px; border-radius: var(--radius-lg);
             border: 1px solid var(--border); display: flex; align-items: center; gap: 14px;
         }
-        .stat-icon { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+        .stat-icon { width: 38px; height: 38px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; }
         .stat-icon.amber { background: var(--amber-soft); color: var(--amber); }
-        .stat-icon.blue { background: var(--primary-soft); color: var(--primary); }
+        .stat-icon.blue { background: #e6eef6; color: var(--accent); }
         .stat-icon.green { background: var(--green-soft); color: var(--green); }
         .stat-icon.slate { background: var(--slate-soft); color: var(--slate); }
         .stat-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -166,7 +173,7 @@ class POSController {
 
         .orders-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(392px, 1fr)); gap: 18px; align-items: start; }
         .order-card {
-            background: var(--surface); border-radius: 12px; overflow: hidden;
+            background: var(--surface); border-radius: var(--radius-lg); overflow: hidden;
             border: 1px solid var(--border); border-top: 3px solid var(--slate);
             transition: box-shadow .18s ease; animation: slideIn .3s ease;
         }
@@ -182,15 +189,15 @@ class POSController {
         .order-header-top { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
         .platform-badge {
             font-size: 9.5px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase;
-            padding: 3px 8px; border-radius: 4px; background: #0d1b2a; color: #fff;
+            padding: 3px 8px; border-radius: var(--radius); background: var(--primary); color: #fff;
         }
         .order-number { font-size: 17px; font-weight: 680; letter-spacing: -.3px; }
         .order-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
         .order-uuid { font-size: 10px; color: var(--text-faint); font-family: ui-monospace, Consolas, monospace; margin-top: 3px; }
 
-        .order-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; }
+        .order-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: var(--radius); font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; }
         .order-status.pending { background: var(--amber-soft); color: var(--amber); }
-        .order-status.preparing { background: var(--primary-soft); color: var(--primary); }
+        .order-status.preparing { background: #e6eef6; color: var(--accent); }
         .order-status.completed { background: var(--green-soft); color: var(--green); }
         .order-status.denied, .order-status.expired, .order-status.cancelled { background: var(--slate-soft); color: var(--slate); }
         .order-status.error { background: var(--red-soft); color: var(--red); }
@@ -205,39 +212,39 @@ class POSController {
         .item:first-of-type { padding-top: 0; }
         .item:last-child { border-bottom: none; padding-bottom: 0; }
         .item-main { display: flex; align-items: flex-start; gap: 11px; flex: 1; min-width: 0; }
-        .item-qty-badge { background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 12.5px; min-width: 30px; height: 25px; padding: 0 7px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .item-qty-badge { background: var(--primary-soft); color: var(--primary); font-weight: 700; font-size: 12.5px; min-width: 30px; height: 25px; padding: 0 7px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
         .item-name { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
         .item-plu { font-size: 11px; color: var(--text-faint); font-family: ui-monospace, Consolas, monospace; }
-        .item-mods { font-size: 11.5px; color: #8a5a12; background: #fdf6ea; border-left: 2px solid #e0b877; padding: 5px 8px; border-radius: 3px; margin-top: 4px; line-height: 1.4; }
+        .item-mods { font-size: 11.5px; color: #8a5a12; background: #fdf6ea; border-left: 2px solid #e0b877; padding: 5px 8px; border-radius: var(--radius); margin-top: 4px; line-height: 1.4; }
         .item-prices { text-align: right; flex-shrink: 0; }
         .item-price { font-weight: 650; font-size: 13.5px; display: block; }
         .item-unit { font-size: 11px; color: var(--text-faint); display: block; margin-top: 1px; }
 
-        .order-totals { background: #f7f9fc; border: 1px solid var(--border-soft); padding: 12px 14px; border-radius: 9px; font-size: 12.5px; margin-top: 14px; }
+        .order-totals { background: #f8fafb; border: 1px solid var(--border-soft); padding: 12px 14px; border-radius: var(--radius); font-size: 12.5px; margin-top: 14px; }
         .total-row { display: flex; justify-content: space-between; margin: 5px 0; color: var(--text-muted); }
         .total-row.promotion span:last-child { color: var(--green); }
         .total-row.total { font-weight: 700; color: var(--text); font-size: 15px; padding-top: 9px; border-top: 1px solid var(--border); margin-top: 9px; }
 
-        .order-customer { border: 1px solid var(--border-soft); padding: 12px 14px; border-radius: 9px; margin-top: 12px; }
+        .order-customer { border: 1px solid var(--border-soft); padding: 12px 14px; border-radius: var(--radius); margin-top: 12px; }
         .customer-grid { display: flex; flex-direction: column; gap: 8px; }
         .customer-grid .row { display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
         .customer-grid .value { font-size: 12.5px; color: var(--text); font-weight: 600; }
 
         .error-detail { background: var(--red-soft); padding: 10px 12px; border-left: 3px solid var(--red); border-radius: 4px; font-size: 12px; color: var(--red); word-break: break-word; margin-top: 12px; line-height: 1.45; }
 
-        .actions { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border-soft); background: #fbfcfe; }
-        .btn { flex: 1; padding: 11px 14px; border: 1px solid transparent; border-radius: 8px; font-size: 13.5px; font-weight: 620; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background .15s ease, border-color .15s ease; font-family: inherit; }
+        .actions { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border-soft); background: #fafbfc; }
+        .btn { flex: 1; padding: 11px 14px; border: 1px solid transparent; border-radius: var(--radius); font-size: 13.5px; font-weight: 620; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background .15s ease, border-color .15s ease; font-family: inherit; }
         .btn:disabled { opacity: .5; cursor: not-allowed; }
         .btn-accept { background: var(--green); color: #fff; }
-        .btn-accept:hover:not(:disabled) { background: #0f5c3c; }
+        .btn-accept:hover:not(:disabled) { background: #0f5039; }
         .btn-deny { background: var(--surface); color: var(--red); border-color: #f0cdca; }
         .btn-deny:hover:not(:disabled) { background: var(--red-soft); }
         .btn-complete { background: var(--primary); color: #fff; }
-        .btn-complete:hover:not(:disabled) { background: #163f74; }
+        .btn-complete:hover:not(:disabled) { background: var(--primary-dark); }
 
-        .empty-state { grid-column: 1 / -1; text-align: center; padding: 64px 24px; background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; }
-        .empty-state .empty-icon { width: 52px; height: 52px; border-radius: 12px; background: var(--slate-soft); color: var(--text-faint); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+        .empty-state { grid-column: 1 / -1; text-align: center; padding: 64px 24px; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-lg); }
+        .empty-state .empty-icon { width: 52px; height: 52px; border-radius: var(--radius-lg); background: var(--slate-soft); color: var(--text-faint); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
         .empty-state h2 { font-size: 16px; font-weight: 650; margin-bottom: 6px; }
         .empty-state p { font-size: 13px; color: var(--text-muted); }
 
