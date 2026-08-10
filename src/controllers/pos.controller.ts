@@ -100,31 +100,35 @@ class POSController {
     <title>Punto de Venta — Sistema Sierra</title>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        /* Paleta alineada a la identidad de Sistemas Sierra: azul marino corporativo,
-           superficies blancas, grises de apoyo y esquinas rectas (radio mínimo).
-           Para ajustar la marca basta con cambiar --primary y --primary-dark. */
+        /* Identidad de Sistemas Sierra: teal petróleo oscuro como color corporativo,
+           verde lima como acento de marca, verde para confirmaciones y botones de
+           píldora. El logotipo va sobre fondo negro, igual que en su sitio. */
         :root {
-            --bg: #f4f6f8;
+            --bg: #f2f4f5;
             --surface: #ffffff;
-            --border: #d9dfe6;
-            --border-soft: #edf0f4;
-            --text: #1a2536;
-            --text-muted: #61707f;
-            --text-faint: #93a0ad;
-            --primary: #17293f;
-            --primary-dark: #0f1c2e;
-            --primary-soft: #e8ecf1;
-            --accent: #1f4e79;
+            --border: #dae0e3;
+            --border-soft: #eceff1;
+            --text: #223541;
+            --text-muted: #5f7480;
+            --text-faint: #92a3ac;
+            --primary: #12404e;
+            --primary-dark: #0b2c37;
+            --primary-soft: #e4edf0;
+            --accent: #c2d500;
+            --accent-dark: #8f9d00;
+            --logo-bg: #0d0d0d;
             --amber: #9a6300;
             --amber-soft: #fbf2e0;
-            --green: #14654a;
-            --green-soft: #e3f1ea;
+            --green: #4f8f3c;
+            --green-dark: #3f7530;
+            --green-soft: #eaf3e4;
             --red: #a82820;
             --red-soft: #fbeae8;
-            --slate: #59646f;
-            --slate-soft: #edf0f3;
+            --slate: #5f7480;
+            --slate-soft: #eceff1;
             --radius: 4px;
             --radius-lg: 6px;
+            --pill: 999px;
         }
         body {
             font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -136,15 +140,22 @@ class POSController {
 
         header {
             background: var(--surface); padding: 18px 24px; border-radius: var(--radius-lg);
-            border: 1px solid var(--border); margin-bottom: 20px;
+            border: 1px solid var(--border); border-top: 3px solid var(--accent);
+            margin-bottom: 20px;
             display: flex; justify-content: space-between; align-items: center; gap: 16px;
         }
-        .brand { display: flex; align-items: center; gap: 14px; }
-        .brand-mark {
-            width: 42px; height: 42px; border-radius: var(--radius); background: var(--primary);
-            color: #fff; display: flex; align-items: center; justify-content: center;
+        .brand { display: flex; align-items: center; gap: 16px; }
+        /* Logotipo Sierra: caja negra con la marca "S" y el nombre en versalitas */
+        .brand-logo {
+            background: var(--logo-bg); border-radius: var(--radius);
+            padding: 8px 14px; display: flex; align-items: center; gap: 9px;
         }
-        .brand h1 { font-size: 19px; font-weight: 650; letter-spacing: -.2px; }
+        .brand-logo .logo-word {
+            color: #fff; font-size: 17px; font-weight: 600; letter-spacing: 1.5px;
+            text-transform: lowercase; font-family: 'Segoe UI Semibold', 'Segoe UI', Arial, sans-serif;
+        }
+        .brand-divider { width: 1px; height: 34px; background: var(--border); }
+        .brand h1 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; color: var(--primary); }
         .brand p { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
 
         .status {
@@ -164,7 +175,7 @@ class POSController {
         }
         .stat-icon { width: 38px; height: 38px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; }
         .stat-icon.amber { background: var(--amber-soft); color: var(--amber); }
-        .stat-icon.blue { background: #e6eef6; color: var(--accent); }
+        .stat-icon.blue { background: var(--primary-soft); color: var(--primary); }
         .stat-icon.green { background: var(--green-soft); color: var(--green); }
         .stat-icon.slate { background: var(--slate-soft); color: var(--slate); }
         .stat-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -197,7 +208,7 @@ class POSController {
 
         .order-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: var(--radius); font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; white-space: nowrap; }
         .order-status.pending { background: var(--amber-soft); color: var(--amber); }
-        .order-status.preparing { background: #e6eef6; color: var(--accent); }
+        .order-status.preparing { background: var(--primary-soft); color: var(--primary); }
         .order-status.completed { background: var(--green-soft); color: var(--green); }
         .order-status.denied, .order-status.expired, .order-status.cancelled { background: var(--slate-soft); color: var(--slate); }
         .order-status.error { background: var(--red-soft); color: var(--red); }
@@ -234,11 +245,12 @@ class POSController {
         .error-detail { background: var(--red-soft); padding: 10px 12px; border-left: 3px solid var(--red); border-radius: 4px; font-size: 12px; color: var(--red); word-break: break-word; margin-top: 12px; line-height: 1.45; }
 
         .actions { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border-soft); background: #fafbfc; }
-        .btn { flex: 1; padding: 11px 14px; border: 1px solid transparent; border-radius: var(--radius); font-size: 13.5px; font-weight: 620; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background .15s ease, border-color .15s ease; font-family: inherit; }
+        /* Botones de píldora, como los CTA del sitio de Sierra */
+        .btn { flex: 1; padding: 11px 18px; border: 1.5px solid transparent; border-radius: var(--pill); font-size: 13px; font-weight: 650; letter-spacing: .3px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background .15s ease, border-color .15s ease; font-family: inherit; }
         .btn:disabled { opacity: .5; cursor: not-allowed; }
         .btn-accept { background: var(--green); color: #fff; }
-        .btn-accept:hover:not(:disabled) { background: #0f5039; }
-        .btn-deny { background: var(--surface); color: var(--red); border-color: #f0cdca; }
+        .btn-accept:hover:not(:disabled) { background: var(--green-dark); }
+        .btn-deny { background: var(--surface); color: var(--red); border-color: #ecc7c4; }
         .btn-deny:hover:not(:disabled) { background: var(--red-soft); }
         .btn-complete { background: var(--primary); color: #fff; }
         .btn-complete:hover:not(:disabled) { background: var(--primary-dark); }
@@ -260,15 +272,18 @@ class POSController {
     <div class="container">
         <header>
             <div class="brand">
-                <div class="brand-mark">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 9h18M3 9l1.5-4.5A2 2 0 0 1 6.4 3h11.2a2 2 0 0 1 1.9 1.5L21 9M3 9v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9"/>
-                        <path d="M9 13h6"/>
+                <div class="brand-logo">
+                    <svg width="22" height="22" viewBox="0 0 32 32" aria-label="Sistemas Sierra">
+                        <rect x="1" y="1" width="30" height="30" rx="3" fill="none" stroke="#ffffff" stroke-width="1.6"/>
+                        <path d="M22 9.5c-2.2-1.6-5.4-1.9-7.6-.6-2.4 1.4-2.5 4.3-.2 5.7 1.6 1 4.2 1.2 5.6 2.3 1.6 1.3 1 3.6-1 4.4-2.2.9-5.2.4-7.3-1.1"
+                              fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
                     </svg>
+                    <span class="logo-word">sierra</span>
                 </div>
+                <div class="brand-divider"></div>
                 <div>
-                    <h1>Punto de Venta — Sistema Sierra</h1>
-                    <p>Órdenes en línea en tiempo real</p>
+                    <h1>Punto de Venta — Órdenes en línea</h1>
+                    <p>Integración Uber Eats · Actualización en tiempo real</p>
                 </div>
             </div>
             <div class="status" id="status-pill">
