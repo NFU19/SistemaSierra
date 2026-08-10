@@ -325,8 +325,8 @@ class UberOrderService {
   }
 
   /**
-   * Marca la orden como lista para ser recogida por el repartidor.
-   * Ruta configurable (UBER_PATH_ORDER_READY) — sin verificar en la doc pública.
+   * Marca la orden como lista para que el repartidor la recoja.
+   * POST /v1/delivery/order/{order_id}/ready — cuerpo vacío, respuesta 200.
    */
   async markOrderReady(orderId: string): Promise<UberCallResult> {
     logger.info(`Marcando orden ${orderId} como lista en Uber`);
@@ -335,13 +335,14 @@ class UberOrderService {
   }
 
   /**
-   * Reporta un problema de cumplimiento (producto agotado, sustitución) para que el
-   * cliente decida en la app de Uber Eats.
+   * Reporta un problema de cumplimiento (producto agotado, no se puede cumplir una
+   * instrucción especial) para que el cliente decida en la app de Uber Eats.
    *
-   * Ruta configurable (UBER_PATH_RESOLVE_FULFILLMENT). PENDIENTE DE CONFIRMAR: pertenece a
-   * la "Order Fulfillment API Suite" (la uAPI nueva), cuyas rutas no están publicadas.
+   * POST /v1/delivery/order/{order_id}/resolve-fulfillment-issues
+   * El cuerpo es obligatorio: { fulfillment_issues: [ ... ] }.
+   * Tras la llamada, Uber envía el webhook order.fulfillment_issues.resolved u order.failed.
    *
-   * Valores documentados por Uber para el payload:
+   * Valores documentados por Uber:
    *   issue_type:  FOUND_ITEM | PARTIAL_AVAILABILITY | OUT_OF_ITEM
    *   action_type: REPLACE_FOR_ME | SUBSTITUTE_ME | REMOVE_ITEM | ALTERNATIVE_ITEM
    */

@@ -46,12 +46,14 @@ export const config = {
       // Verificados contra la documentación pública de Uber:
       posData: process.env.UBER_PATH_POS_DATA || '/v1/eats/stores/{storeId}/pos_data',
       cancelOrder: process.env.UBER_PATH_CANCEL_ORDER || '/v1/eats/orders/{orderId}/cancel',
-      // SIN VERIFICAR — confirmar con el soporte de Uber y ajustar por env var si dan 404:
-      orderReady:
-        process.env.UBER_PATH_ORDER_READY || '/v1/eats/orders/{orderId}/restaurant_order_ready',
+      // Order Fulfillment API Suite (la "uAPI"). OJO: estas rutas viven bajo /v1/delivery/
+      // con "order" en SINGULAR, no bajo /v1/eats/orders/. Confirmadas con el soporte de Uber.
+      orderReady: process.env.UBER_PATH_ORDER_READY || '/v1/delivery/order/{orderId}/ready',
       resolveFulfillmentIssue:
         process.env.UBER_PATH_RESOLVE_FULFILLMENT ||
-        '/v1/eats/orders/{orderId}/resolve_fulfillment_issue',
+        '/v1/delivery/order/{orderId}/resolve-fulfillment-issues',
+      // Promotions y Reporting: Uber confirmó que pueden omitirse en la certificación si la
+      // integración no los usa. Se conservan sin verificar por si llegan a requerirse.
       createPromotion:
         process.env.UBER_PATH_CREATE_PROMOTION || '/v1/eats/stores/{storeId}/promotions',
       reportFiles: process.env.UBER_PATH_REPORT_FILES || '/v1/eats/report-files',

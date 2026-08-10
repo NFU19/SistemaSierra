@@ -14,6 +14,7 @@
 import { logger } from '../utils/logger';
 import { config } from '../config/config';
 import { UberCallResult } from '../interfaces/uber.interface';
+import { orderStore } from './event.service';
 import { uberOrderService } from './uber-order.service';
 import { uberIntegrationService } from './uber-integration.service';
 import { uberPromotionsService } from './uber-promotions.service';
@@ -317,11 +318,21 @@ class CertificationService {
         return this.withOrderId(orderId, (oid) => uberOrderService.markOrderReady(oid));
 
       case 'resolve-fulfillment':
-        return this.withOrderId(orderId, (oid) =>
-          uberOrderService.resolveFulfillmentIssue(oid, {
-            reason: 'ITEM_OUT_OF_STOCK',
-          })
-        );
+        // El cuerpo debe traer fulfillment_issues[]. Se reporta el primer producto de la
+        // orden como agotado, que es el caso más simple para ejercitar el endpoint.
+        return this.withOrderId(orderId, async (oid) => {
+          const items = orderStore.get(oid)?.details?.items ?? [];
+          const first = items[0];
+          return uberOrderService.resolveFulfillmentIssue(oid, {
+            fulfillment_issues: [
+              {
+                issue_type: 'OUT_OF_ITEM',
+                action_type: 'REMOVE_ITEM',
+                ...(first?.plu ? { item_id: first.plu } : {}),
+              },
+            ],
+          });
+        });
 
       default:
         return {
